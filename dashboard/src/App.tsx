@@ -45,7 +45,6 @@ export default function App() {
         <aside className="side">
           <CatchUp snap={snap} name={name} actions={actions} />
           <OnScreen snap={snap} name={name} />
-          <AgentTrace snap={snap} />
           <AlertLog snap={snap} now={now} />
           <CareCircle snap={snap} actions={actions} />
         </aside>
@@ -186,6 +185,7 @@ function Conversation({ snap, name, now, actions }: { snap: Snapshot; name: stri
   return (
     <section className="panel convo">
       <h3>Conversation</h3>
+      <Saved snap={snap} />
       <ol className="thread">
         {msgs.length === 0 && <li className="muted empty">Texts to and from {name} show up here, along with what they say aloud.</li>}
         {msgs.map(m => <Bubble key={String(m.id)} m={m} who={contacts.get(m.contact_id)} name={name} now={now} />)}
@@ -252,36 +252,6 @@ function OnScreen({ snap, name }: { snap: Snapshot; name: string }) {
       <h3>Replies on {name}'s screen</h3>
       <ul>{snap.suggestions.map(s => <li key={String(s.id)}>{s.text}</li>)}</ul>
       <p className="hint">{snap.suggestions[0].source === 'nemotron' ? 'Drafted by Nemotron.' : 'Built-in replies (Nemotron unreachable).'} {name} sends one with a double blink.</p>
-    </section>
-  );
-}
-
-const STEP_LABEL: Record<string, string> = { plan: 'Plan', tool: 'Tool', reply: 'Replies', fallback: 'Fallback', retry: 'Retry' };
-function AgentTrace({ snap }: { snap: Snapshot }) {
-  const runs = useMemo(() => {
-    const groups = new Map<string, typeof snap.agent>();
-    for (const s of snap.agent) {
-      const g = groups.get(s.run_id) ?? [];
-      g.push(s);
-      groups.set(s.run_id, g);
-    }
-    return [...groups.values()].slice(-3).reverse();
-  }, [snap.agent]);
-  return (
-    <section className="panel agent">
-      <h3>What the agent did</h3>
-      <Saved snap={snap} />
-      {runs.length === 0 && <p className="muted">Each incoming text starts a Nemotron run: it reads the conversation and how Neal is doing, decides whether caregivers need to know, then drafts replies. The steps appear here.</p>}
-      {runs.map((steps, i) => (
-        <ol key={steps[0].run_id} className={`run ${i ? 'old' : ''}`}>
-          {steps.map(s => (
-            <li key={String(s.id)} className={`step step-${s.step}`}>
-              <span className="k">{STEP_LABEL[s.step] ?? s.step}</span>
-              <span className="v">{s.detail.replace(/^\[[^\]]+\]\s*/, '')}</span>
-            </li>
-          ))}
-        </ol>
-      ))}
     </section>
   );
 }

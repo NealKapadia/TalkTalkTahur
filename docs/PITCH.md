@@ -15,7 +15,7 @@ Judges walk table to table and give each team a few minutes. **Lead with the liv
 1. **Hook (10 s):** "Imagine understanding every word your family says and not being able to answer. That's late-stage ALS. BlinkTalk gives people their voice back with only their eyes."
 2. **Hardware (15 s):** point at the electrodes and the TI board. Offline model, ~90 ms per movement. 2 blinks choose, 3 on/off, 5 help.
 3. **Live text (30 s):** text the line from your phone ("Want me to bring dinner?"). Replies appear on the patient screen; the wearer blinks twice; the reply lands on your phone. Show the dashboard: words appear live, and the eye trace draws steps and spikes.
-4. **Nemotron (25 s):** spell "alex pho" → AI expand → "to Alex: Can you bring pho tonight?" → send. Send a photo to the line and show the description. Point at "eye movements saved" and the agent steps.
+4. **Nemotron (25 s):** spell "alex pho" → AI expand → "to Alex: Can you bring pho tonight?" → send. Send a photo to the line and show the description. Point at "fewer eye movements" at the top of the conversation; the hub window shows each Nemotron step live.
 5. **SOS (20 s):** five blinks → red screen → your phone buzzes → reply "OK" → patient sees "help is on the way". Mention the 45-second escalation lives in the database (scheduled reducer).
 6. **Close (10 s):** "Blink twice to talk, five times and help is on the way. Want to try?" Hand the judge the keyboard.
 

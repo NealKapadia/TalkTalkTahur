@@ -184,13 +184,6 @@ button { cursor: pointer; }
 .onscreen li { padding: 8px 12px; border-radius: var(--r-sm); background: var(--lamp-soft); font: 17px/1.35 var(--voice); }
 
 /* agent trace */
-.run { list-style: none; margin: 0 0 12px; padding: 0 0 0 14px; border-left: 2px solid var(--lamp); display: grid; gap: 6px; }
-.run.old { border-left-color: var(--line); opacity: 0.6; }
-.step { display: grid; grid-template-columns: 64px 1fr; gap: 8px; font-size: 14px; }
-.step .k { color: var(--lamp-ink); font-weight: 700; }
-.step-fallback .k, .step-retry .k { color: var(--warn); }
-.step-reply .v { font-family: var(--voice); font-size: 15px; }
-.step .v { overflow-wrap: anywhere; }
 
 /* alerts */
 .alerts ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
