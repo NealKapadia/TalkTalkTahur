@@ -4,3 +4,16 @@ phrase_usage.json
 board/*.whl
 board/scipy_part_*
 labels.png
+
+# secrets: never commit
+.env
+.env.*
+!.env.example
+*.token
+.spacetime_token
+
+# node / build
+node_modules/
+dist/
+.vite/
+*.log

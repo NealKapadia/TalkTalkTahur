@@ -1,0 +1,19 @@
+{
+  "name": "blinktalk-spacetime",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "BlinkTalk backend: SpacetimeDB module (tables, reducers, scheduled SOS escalation)",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "spacetimedb": "2.14.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.7"
+  }
+}
