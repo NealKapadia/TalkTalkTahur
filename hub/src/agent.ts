@@ -1,16 +1,19 @@
 /**
  * BlinkTalk agent, powered by NVIDIA Nemotron.
  *
- * Every glance costs the patient seconds, so the agent's job is to turn an
- * incoming text (or 2-3 keywords picked with the eyes) into a few complete,
- * first-person replies the patient can send with one double blink. It is not a
- * chatbot: it never answers on the patient's behalf. It plans, calls tools
- * against the SpacetimeDB state, screens the message for scams, may escalate to
- * caregivers, and only then proposes replies. Every step is written to the
- * agent_step table so caregivers (and judges) can watch it think.
+ * Every glance costs the patient seconds, so the agent turns an incoming text
+ * (or 2-3 keywords picked with the eyes) into four complete, first-person
+ * replies the patient can send with one double blink. It is not a chatbot: it
+ * never answers on the patient's behalf. It plans, calls tools against the live
+ * SpacetimeDB state, decides whether caregivers need to know something, and
+ * only then proposes replies. Every step is written to the agent_step table so
+ * caregivers can watch it work.
+ *
+ * Runs against NVIDIA's hosted API (build.nvidia.com) or a local Nemotron
+ * served by Ollama / vLLM / NIM (any OpenAI-compatible endpoint), so the whole
+ * system can run with no internet except the messaging channel.
  */
 import { randomUUID } from 'node:crypto';
-import type { Message } from '../../bindings/index.ts';
 import { settings } from './env.ts';
 
 // ------------------------------------------------------------------ ports
@@ -20,63 +23,37 @@ export interface AgentPorts {
   conversation(): Array<{ who: string; text: string; at?: string }>;
   patientState(): Record<string, unknown>;
   contact(): { name: string; relation: string; isCaregiver: boolean };
-  flag(risk: 'ok' | 'caution' | 'scam', reason: string): Promise<void>;
   alertCaregivers(reason: string): Promise<void>;
   propose(replies: string[], source: 'nemotron' | 'fallback'): Promise<void>;
   log(step: string, detail: string): Promise<void>;
 }
 
 export type Task =
-  | { kind: 'reply'; message: Pick<Message, 'body'> }
+  | { kind: 'reply'; message: { body: string } }
   | { kind: 'intent'; keywords: string };
 
-// ------------------------------------------------------------------ guardrail screen (no network)
-const SCAM_RULES: Array<[RegExp, string]> = [
-  [/\b(ssn|social security( number)?)\b/i, 'asks for a Social Security number'],
-  [/\bgift ?cards?\b/i, 'asks for gift cards'],
-  [/\b(wire|zelle|venmo|cash ?app|bitcoin|crypto)\b.*\b(send|pay|transfer)|\b(send|pay|transfer)\b.*\b(wire|zelle|venmo|cash ?app|bitcoin|crypto)\b/i, 'asks for an untraceable payment'],
-  [/\b(verify|confirm|update)\b.{0,30}\b(account|identity|card|password|pin)\b/i, 'asks to verify account details'],
-  [/\b(suspended|locked|deactivated|frozen)\b/i, 'claims an account was suspended'],
-  [/\b(one[- ]time|verification|security) code\b/i, 'asks for a one-time code'],
-  [/\b(medicare|irs|social security administration)\b.{0,60}\b(call|click|pay|verify|suspend)/i, 'impersonates a government agency'],
-  [/\b(grandson|granddaughter|grandma|grandpa)\b.{0,60}\b(jail|bail|accident|lawyer)\b/i, 'family-emergency scam pattern'],
-  [/https?:\/\/(?!(www\.)?(apple|google|nvidia|utdallas)\.)[^\s]*(bit\.ly|tinyurl|\.xyz|\.top|\.click|login|verify)/i, 'contains a suspicious link'],
-  [/\b(act now|urgent(ly)?|immediately|within 24 hours|final notice)\b/i, 'uses pressure language'],
-];
-
-export function screen(text: string): { risk: 'ok' | 'caution' | 'scam'; reasons: string[] } {
-  const reasons = SCAM_RULES.filter(([re]) => re.test(text)).map(([, why]) => why);
-  const pressureOnly = reasons.length === 1 && reasons[0] === 'uses pressure language';
-  if (reasons.length >= 2 || (reasons.length === 1 && !pressureOnly)) return { risk: 'scam', reasons };
-  if (pressureOnly) return { risk: 'caution', reasons };
-  return { risk: 'ok', reasons };
-}
-
 // ------------------------------------------------------------------ deterministic fallback
-export function fallbackReplies(task: Task, risk: 'ok' | 'caution' | 'scam'): string[] {
-  if (risk === 'scam') {
-    return ["I don't share personal info by text.", "I'll check with my family first.", 'Please stop texting me.', 'Who is this?'];
-  }
+export function fallbackReplies(task: Task): string[] {
   if (task.kind === 'intent') {
     const k = task.keywords.trim();
     const cap = k.charAt(0).toUpperCase() + k.slice(1);
-    return [`${cap}, please.`, `Can we talk about ${k} later?`, `I need ${k}.`, `Yes, ${k}.`];
+    return [`${cap}, please.`, `I need ${k}.`, `Can we talk about ${k}?`, `Yes, ${k}.`];
   }
   const t = task.message.body.toLowerCase();
   if (/\?\s*$/.test(t) || /\b(are|do|can|will|would|should|is)\s+you\b/.test(t)) {
-    if (/\b(ok|okay|alright|doing|feel)/.test(t)) return ["I'm okay, thanks.", "Not great today.", 'Can you come by?', 'Call me later.'];
-    if (/\b(visit|come|stop by|tonight|tomorrow)\b/.test(t)) return ['Yes, please come.', 'Not today, sorry.', 'Tomorrow is better.', 'What time?'];
+    if (/\b(ok|okay|alright|doing|feel)/.test(t)) return ["I'm okay, thanks.", 'Not great today.', 'Can you come by?', 'Call me later.'];
+    if (/\b(visit|come|stop by|tonight|tomorrow|bring)\b/.test(t)) return ['Yes, please come.', 'Not today, sorry.', 'Tomorrow is better.', 'What time?'];
     return ['Yes.', 'No.', 'Maybe later.', 'Can you call me?'];
   }
   return ['Thank you.', 'Love you.', 'Can you call me?', 'Talk soon.'];
 }
 
 // ------------------------------------------------------------------ Nemotron client
+type ToolCall = { id: string; type: 'function'; function: { name: string; arguments: string } };
 type ChatMsg =
   | { role: 'system' | 'user'; content: string }
   | { role: 'assistant'; content: string | null; tool_calls?: ToolCall[] }
   | { role: 'tool'; tool_call_id: string; content: string };
-type ToolCall = { id: string; type: 'function'; function: { name: string; arguments: string } };
 
 export type Fetch = typeof fetch;
 
@@ -85,38 +62,23 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'get_conversation',
-      description: 'Recent messages between the patient and this contact, oldest first.',
-      parameters: { type: 'object', properties: {}, additionalProperties: false },
+      description: 'Recent messages between the patient and this contact (plus what the patient said aloud), oldest first.',
+      parameters: { type: 'object', properties: {} },
     },
   },
   {
     type: 'function',
     function: {
       name: 'get_patient_state',
-      description: "The patient's live state: heart rate trend, current status, local time, phrases they use most.",
-      parameters: { type: 'object', properties: {}, additionalProperties: false },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'screen_message',
-      description: 'Record your fraud/safety verdict on the incoming message. Call exactly once for replies.',
-      parameters: {
-        type: 'object',
-        properties: {
-          risk: { type: 'string', enum: ['ok', 'caution', 'scam'] },
-          reason: { type: 'string', description: 'Short plain-language reason, with honest confidence.' },
-        },
-        required: ['risk', 'reason'],
-      },
+      description: "The patient's live state: heart rate trend, current status, local time, open alerts, phrases they use most.",
+      parameters: { type: 'object', properties: {} },
     },
   },
   {
     type: 'function',
     function: {
       name: 'alert_caregivers',
-      description: "Text the patient's caregivers. Only for real safety concerns (scam targeting them, a medical worry, an emergency).",
+      description: "Text the patient's caregivers. Only for a genuine safety concern: the message reports an emergency, or the patient's state looks medically worrying.",
       parameters: { type: 'object', properties: { reason: { type: 'string' } }, required: ['reason'] },
     },
   },
@@ -127,7 +89,7 @@ const TOOLS = [
       description: 'Finish: give exactly 4 short first-person replies the patient can send with one selection.',
       parameters: {
         type: 'object',
-        properties: { replies: { type: 'array', items: { type: 'string' }, minItems: 4, maxItems: 4 } },
+        properties: { replies: { type: 'array', items: { type: 'string' } } },
         required: ['replies'],
       },
     },
@@ -137,19 +99,17 @@ const TOOLS = [
 function systemPrompt(name: string): string {
   return [
     `You are the communication agent inside BlinkTalk. ${name} cannot speak or type; they control a screen with eye movements, and every selection costs several seconds.`,
-    'You never message anyone yourself. You prepare 4 reply options that sound like the patient (first person, warm, plain, max 12 words each, no emojis unless the conversation uses them).',
-    'Make the 4 options meaningfully different (e.g. yes / no / not now / ask a question). Use facts from the tools; never invent plans, names or medical facts.',
-    'Workflow: 1) get_conversation and get_patient_state; 2) for incoming messages, screen_message with an honest verdict; 3) alert_caregivers only for genuine safety issues; 4) propose_replies.',
-    'If a message looks like a scam, replies must protect the patient (never share data, offer to check with family).',
+    'You never message anyone yourself. You prepare 4 reply options that sound like the patient: first person, warm, plain, at most 12 words each.',
+    'Make the 4 options meaningfully different (for example yes / no / not now / a question back). Use facts from the tools; never invent plans, names or medical facts.',
+    'Workflow: 1) call get_conversation and get_patient_state; 2) call alert_caregivers only if there is a genuine safety concern; 3) call propose_replies.',
   ].join('\n');
 }
 
-function taskPrompt(task: Task, contact: { name: string; relation: string }, guard: ReturnType<typeof screen>): string {
+function taskPrompt(task: Task, contact: { name: string; relation: string }): string {
   if (task.kind === 'intent') {
-    return `The patient selected these keywords with their eyes: "${task.keywords}". Expand them into 4 complete replies to ${contact.name} (${contact.relation || 'contact'}), using the conversation for context. No screening needed.`;
+    return `The patient selected these keywords with their eyes: "${task.keywords}". Expand them into 4 complete replies to ${contact.name} (${contact.relation || 'contact'}), using the conversation for context.`;
   }
-  const hint = guard.reasons.length ? ` A rule-based pre-screen noticed: ${guard.reasons.join('; ')}.` : '';
-  return `New message from ${contact.name} (${contact.relation || 'unknown relation'}): "${task.message.body}".${hint} Follow the workflow.`;
+  return `New message from ${contact.name} (${contact.relation || 'unknown relation'}): "${task.message.body}". Follow the workflow.`;
 }
 
 export function stripThinking(s: string): string {
@@ -169,6 +129,9 @@ export function parseRepliesFromText(s: string): string[] | null {
   return lines.length >= 2 ? lines.slice(0, 4) : null;
 }
 
+const isLocal = () => /\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])/.test(settings.nemotronBaseUrl);
+export const agentConfigured = () => Boolean(settings.nvidiaKey) || isLocal();
+
 async function chat(fetchFn: Fetch, messages: ChatMsg[], useTools: boolean): Promise<{ content: string | null; tool_calls?: ToolCall[] }> {
   const body: Record<string, unknown> = {
     model: settings.nemotronModel,
@@ -178,15 +141,14 @@ async function chat(fetchFn: Fetch, messages: ChatMsg[], useTools: boolean): Pro
     max_tokens: 800,
   };
   if (useTools) { body.tools = TOOLS; body.tool_choice = 'auto'; }
-  if (!settings.nemotronThinking) body.chat_template_kwargs = { enable_thinking: false };
+  if (!settings.nemotronThinking && !isLocal()) body.chat_template_kwargs = { enable_thinking: false };
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', Accept: 'application/json' };
+  if (settings.nvidiaKey) headers.Authorization = `Bearer ${settings.nvidiaKey}`;
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), settings.nemotronTimeoutMs);
   try {
     const res = await fetchFn(`${settings.nemotronBaseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${settings.nvidiaKey}`, 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify(body),
-      signal: ctl.signal,
+      method: 'POST', headers, body: JSON.stringify(body), signal: ctl.signal,
     });
     if (!res.ok) {
       const txt = (await res.text()).slice(0, 300);
@@ -201,7 +163,7 @@ async function chat(fetchFn: Fetch, messages: ChatMsg[], useTools: boolean): Pro
   }
 }
 
-function clampReplies(replies: string[]): string[] {
+function clampReplies(replies: unknown[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const r of replies) {
@@ -216,32 +178,27 @@ export async function runAgent(task: Task, ports: AgentPorts, fetchFn: Fetch = f
   const runId = randomUUID().slice(0, 8);
   const log = (step: string, detail: string) => ports.log(step, `[${runId}] ${detail}`);
   const contact = ports.contact();
-  const guard = task.kind === 'reply' ? screen(task.message.body) : { risk: 'ok' as const, reasons: [] };
-  let verdict: 'ok' | 'caution' | 'scam' = guard.risk;
-  let flagged = false;
   let alerted = false;
 
   await log('plan', task.kind === 'reply'
-    ? `Incoming text from ${contact.name}. Plan: read context -> screen for fraud -> draft 4 replies.`
-    : `Patient picked "${task.keywords}". Plan: read context -> expand into 4 full replies.`);
+    ? `Text from ${contact.name}. Plan: read the conversation and ${ports.patientName}'s state, check whether caregivers need to know, draft 4 replies.`
+    : `${ports.patientName} picked "${task.keywords}". Plan: read the conversation, expand into 4 full replies.`);
 
-  const finishFallback = async (why: string) => {
-    await log('fallback', why);
-    if (task.kind === 'reply' && !flagged) {
-      await ports.flag(guard.risk, guard.reasons.join('; ') || 'No warning signs found by the rule-based screen.');
-      if (guard.risk === 'scam' && !alerted) await ports.alertCaregivers(`Possible scam text to ${ports.patientName} from ${contact.name}: ${guard.reasons.join(', ')}`);
-    }
-    const replies = fallbackReplies(task, guard.risk);
-    await ports.propose(replies, 'fallback');
+  const finish = async (replies: string[], source: 'nemotron' | 'fallback') => {
+    await ports.propose(replies, source);
     await log('reply', replies.join(' | '));
     return replies;
   };
+  const finishFallback = async (why: string) => {
+    await log('fallback', why);
+    return finish(fallbackReplies(task), 'fallback');
+  };
 
-  if (!settings.nvidiaKey) return finishFallback('NVIDIA_API_KEY not set; using on-device rules.');
+  if (!agentConfigured()) return finishFallback('No Nemotron endpoint configured; using built-in replies.');
 
   const messages: ChatMsg[] = [
     { role: 'system', content: systemPrompt(ports.patientName) },
-    { role: 'user', content: taskPrompt(task, contact, guard) },
+    { role: 'user', content: taskPrompt(task, contact) },
   ];
   let useTools = true;
 
@@ -251,9 +208,9 @@ export async function runAgent(task: Task, ports: AgentPorts, fetchFn: Fetch = f
       msg = await chat(fetchFn, messages, useTools);
     } catch (err: any) {
       if (useTools && err?.status && err.status >= 400 && err.status < 500) {
-        await log('error', `Tool calling rejected (${err.status}); retrying in JSON mode.`);
+        await log('retry', `Tool calling rejected (${err.status}); retrying in JSON mode.`);
         useTools = false;
-        messages.push({ role: 'user', content: `Tools are unavailable. Context: conversation=${JSON.stringify(ports.conversation())} state=${JSON.stringify(ports.patientState())}. Reply ONLY with JSON: {"risk":"ok|caution|scam","reason":"...","replies":["","","",""]}` });
+        messages.push({ role: 'user', content: `Tools are unavailable. Context: conversation=${JSON.stringify(ports.conversation())} state=${JSON.stringify(ports.patientState())}. Reply ONLY with JSON: {"replies":["","","",""]}` });
         continue;
       }
       return finishFallback(`Nemotron unavailable (${String(err?.message ?? err).slice(0, 160)}).`);
@@ -261,30 +218,10 @@ export async function runAgent(task: Task, ports: AgentPorts, fetchFn: Fetch = f
 
     const calls = msg.tool_calls ?? [];
     if (!calls.length) {
-      const text = msg.content ?? '';
-      if (!useTools && task.kind === 'reply') {
-        try {
-          const j = JSON.parse(stripThinking(text).match(/\{[\s\S]*\}/)?.[0] ?? '{}');
-          if (['ok', 'caution', 'scam'].includes(j.risk)) {
-            verdict = guard.risk === 'scam' && j.risk === 'ok' ? 'caution' : j.risk;
-            await ports.flag(verdict, String(j.reason ?? ''));
-            flagged = true;
-            await log('result', `screen -> ${verdict}: ${j.reason ?? ''}`);
-          }
-        } catch { /* ignore */ }
-      }
-      const parsed = parseRepliesFromText(text);
-      if (parsed && clampReplies(parsed).length >= 2) {
-        if (task.kind === 'reply' && !flagged) {
-          await ports.flag(verdict, guard.reasons.join('; ') || 'Model gave no verdict; rule screen found nothing.');
-          flagged = true;
-        }
-        const replies = clampReplies(parsed);
-        await ports.propose(replies, 'nemotron');
-        await log('reply', replies.join(' | '));
-        return replies;
-      }
-      messages.push({ role: 'assistant', content: text });
+      const parsed = parseRepliesFromText(msg.content ?? '');
+      const replies = parsed ? clampReplies(parsed) : [];
+      if (replies.length >= 2) return finish(replies, 'nemotron');
+      messages.push({ role: 'assistant', content: msg.content ?? '' });
       messages.push({ role: 'user', content: 'Call propose_replies with exactly 4 replies now.' });
       continue;
     }
@@ -301,18 +238,6 @@ export async function runAgent(task: Task, ports: AgentPorts, fetchFn: Fetch = f
         case 'get_patient_state':
           result = ports.patientState();
           break;
-        case 'screen_message': {
-          let risk = (['ok', 'caution', 'scam'].includes(args.risk) ? args.risk : 'caution') as typeof verdict;
-          // The rule screen is a floor: the model can raise risk, not wave off a rule hit.
-          if (guard.risk === 'scam' && risk === 'ok') risk = 'caution';
-          verdict = risk;
-          if (task.kind === 'reply') {
-            await ports.flag(risk, String(args.reason ?? ''));
-            flagged = true;
-          }
-          result = { recorded: risk };
-          break;
-        }
         case 'alert_caregivers':
           if (!alerted) { await ports.alertCaregivers(String(args.reason ?? 'Agent safety concern')); alerted = true; }
           result = { sent: true };
@@ -320,11 +245,8 @@ export async function runAgent(task: Task, ports: AgentPorts, fetchFn: Fetch = f
         case 'propose_replies': {
           const replies = clampReplies(Array.isArray(args.replies) ? args.replies : []);
           if (replies.length >= 2) {
-            if (task.kind === 'reply' && !flagged) await ports.flag(verdict, guard.reasons.join('; ') || 'No warning signs.');
-            await log('tool', `propose_replies(${replies.length})`);
-            await ports.propose(replies, 'nemotron');
-            await log('reply', replies.join(' | '));
-            return replies;
+            await log('tool', `propose_replies(${replies.length} options)`);
+            return finish(replies, 'nemotron');
           }
           result = { error: 'need 4 non-empty replies' };
           break;

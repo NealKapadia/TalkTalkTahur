@@ -38,7 +38,8 @@ export const settings = {
   nemotronThinking: env('NEMOTRON_THINKING', '0') === '1',
   nemotronTimeoutMs: Number(env('NEMOTRON_TIMEOUT', '90')) * 1000,
   photonProjectId: env('PHOTON_PROJECT_ID'),
-  photonProjectSecret: env('PHOTON_PROJECT_SECRET'),
+  photonApiKey: env('PHOTON_API_KEY'),
+  photonBaseUrl: env('PHOTON_BASE_URL', 'https://api.photon.codes'),
 };
 
 export const redact = (s: string) => (s ? `${s.slice(0, 6)}…(${s.length} chars)` : '(not set)');

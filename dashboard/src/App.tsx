@@ -204,11 +204,9 @@ function Bubble({ m, who, name, now }: { m: Message; who?: Contact; name: string
   }
   const out = m.direction === 'out';
   return (
-    <li className={`msg ${out ? 'out' : 'in'} ${m.risk === 'scam' ? 'scam' : m.risk === 'caution' ? 'caution' : ''}`}>
+    <li className={`msg ${out ? 'out' : 'in'}`}>
       <div className="meta">{out ? `${name} to ${who?.name ?? 'contact'}` : who?.name ?? 'Unknown'} <time>{when}</time>{out && m.status !== 'sent' && <span className={`st st-${m.status}`}>{m.status}</span>}</div>
       <p>{m.body}</p>
-      {m.risk === 'scam' && <p className="risk">Held back as a likely scam: {m.risk_reason || 'matches known scam patterns'}. Caregivers were told.</p>}
-      {m.risk === 'caution' && <p className="risk soft">Worth a second look: {m.risk_reason}</p>}
     </li>
   );
 }
@@ -234,7 +232,7 @@ function SimulateText({ snap, name, actions }: { snap: Snapshot; name: string; a
         <input id="sim-body" placeholder="Want me to bring dinner?" value={body} onChange={e => setBody(e.target.value)} />
         <button type="submit">Send test text</button>
       </div>
-      <p className="hint">With Photon connected, real iMessages to {name}'s number arrive here on their own.</p>
+      <p className="hint">With Photon connected, real iMessages to {name}'s line arrive here on their own.</p>
     </form>
   );
 }
@@ -246,12 +244,12 @@ function OnScreen({ snap, name }: { snap: Snapshot; name: string }) {
     <section className="panel onscreen">
       <h3>Replies on {name}'s screen</h3>
       <ul>{snap.suggestions.map(s => <li key={String(s.id)}>{s.text}</li>)}</ul>
-      <p className="hint">{snap.suggestions[0].source === 'nemotron' ? 'Drafted by Nemotron.' : 'Drafted by on-device rules (Nemotron unreachable).'} {name} sends one with a double blink.</p>
+      <p className="hint">{snap.suggestions[0].source === 'nemotron' ? 'Drafted by Nemotron.' : 'Built-in replies (Nemotron unreachable).'} {name} sends one with a double blink.</p>
     </section>
   );
 }
 
-const STEP_LABEL: Record<string, string> = { plan: 'Plan', tool: 'Tool', result: 'Result', reply: 'Replies', fallback: 'Fallback', error: 'Retry' };
+const STEP_LABEL: Record<string, string> = { plan: 'Plan', tool: 'Tool', reply: 'Replies', fallback: 'Fallback', retry: 'Retry' };
 function AgentTrace({ snap }: { snap: Snapshot }) {
   const runs = useMemo(() => {
     const groups = new Map<string, typeof snap.agent>();
@@ -265,7 +263,7 @@ function AgentTrace({ snap }: { snap: Snapshot }) {
   return (
     <section className="panel agent">
       <h3>What the agent did</h3>
-      {runs.length === 0 && <p className="muted">Each incoming text starts a Nemotron run: it reads the conversation, checks for scams, then drafts replies. The steps appear here.</p>}
+      {runs.length === 0 && <p className="muted">Each incoming text starts a Nemotron run: it reads the conversation and how Neal is doing, decides whether caregivers need to know, then drafts replies. The steps appear here.</p>}
       {runs.map((steps, i) => (
         <ol key={steps[0].run_id} className={`run ${i ? 'old' : ''}`}>
           {steps.map(s => (
@@ -280,7 +278,7 @@ function AgentTrace({ snap }: { snap: Snapshot }) {
   );
 }
 
-const ALERT_NAME: Record<string, string> = { sos: 'SOS', heart_high: 'High heart rate', heart_low: 'Low heart rate', scam: 'Scam text' };
+const ALERT_NAME: Record<string, string> = { sos: 'SOS', heart_high: 'High heart rate', heart_low: 'Low heart rate' };
 function AlertLog({ snap, now }: { snap: Snapshot; now: number }) {
   const list = snap.alerts.slice(-6).reverse();
   if (!list.length) return null;
@@ -311,7 +309,7 @@ function CareCircle({ snap, actions }: { snap: Snapshot; actions: Actions }) {
   return (
     <section className="panel care">
       <h3>Care circle</h3>
-      <p className="hint">An SOS texts tier 1 first. If nobody replies "OK" within {ESCALATE_SECONDS} seconds, it moves to the next tier.</p>
+      <p className="hint">An SOS texts tier 1 first. If nobody replies "OK" within {ESCALATE_SECONDS} seconds, it moves to the next tier. Each caregiver texts the BlinkTalk line once so it can reach them.</p>
       <ul>
         {care.map(c => (
           <li key={String(c.id)}>

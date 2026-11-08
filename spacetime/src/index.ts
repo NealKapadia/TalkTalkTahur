@@ -8,7 +8,7 @@
  *
  *   speller (Python, HTTP)    -> eye_command, set_draft, speak, send_message, raise_sos, heartbeat
  *   hub/photon (Node, WS)     -> receive_message, mark_message, ack_alert_by_reply
- *   hub/agent  (Node, WS)     -> add_suggestions, agent_step, flag_message
+ *   hub/agent  (Node, WS)     -> add_suggestions, log_agent_step, raise_sos
  *   dashboard  (React, WS)    -> live subscription + ack_alert, add_contact, send_message
  *
  * Column and table names are snake_case so SQL from the speller and the
@@ -66,8 +66,6 @@ const message = table(
     channel: t.string(),               // imessage | sms | speech
     body: t.string(),
     status: t.string(),                // queued | sent | failed | received | spoken
-    risk: t.string(),                  // '' | ok | caution | scam
-    risk_reason: t.string(),
     created_at: t.timestamp(),
   }
 );
@@ -103,7 +101,7 @@ const alert = table(
   {
     id: t.u64().primaryKey().autoInc(),
     patient: t.string().index('btree'),
-    kind: t.string(),                  // sos | heart_high | heart_low | scam
+    kind: t.string(),                  // sos | heart_high | heart_low
     detail: t.string(),
     level: t.u8(),                     // caregiver tier currently being notified
     notified_level: t.u8(),            // highest tier the hub has texted
@@ -340,7 +338,7 @@ export const speak = spacetimedb.reducer(
     getPatient(ctx, handle);
     ctx.db.message.insert({
       id: 0n, patient: handle, contact_id: 0n, direction: 'out', channel: 'speech', body,
-      status: 'spoken', risk: '', risk_reason: '', created_at: ctx.timestamp,
+      status: 'spoken', created_at: ctx.timestamp,
     });
     countPhrase(ctx, handle, body);
     touch(ctx, handle, { last_spoken: body, draft: '', status: 'speaking' });
@@ -357,7 +355,7 @@ export const send_message = spacetimedb.reducer(
     if (!c || c.patient !== handle) throw new SenderError('unknown contact');
     ctx.db.message.insert({
       id: 0n, patient: handle, contact_id, direction: 'out', channel: 'imessage', body: text,
-      status: 'queued', risk: '', risk_reason: '', created_at: ctx.timestamp,
+      status: 'queued', created_at: ctx.timestamp,
     });
     countPhrase(ctx, handle, text);
     clearSuggestions(ctx, handle);
@@ -397,7 +395,7 @@ export const receive_message = spacetimedb.reducer(
     clearSuggestions(ctx, handle);
     ctx.db.message.insert({
       id: 0n, patient: handle, contact_id: contactId, direction: 'in', channel: clean(channel, 20) || 'imessage',
-      body: text, status: 'received', risk: '', risk_reason: '', created_at: ctx.timestamp,
+      body: text, status: 'received', created_at: ctx.timestamp,
     });
   }
 );
@@ -448,20 +446,6 @@ export const finish_intent = spacetimedb.reducer({ id: t.u64() }, (ctx, { id }) 
   const i = ctx.db.intent.id.find(id);
   if (i) ctx.db.intent.id.update({ ...i, status: 'done' });
 });
-
-export const flag_message = spacetimedb.reducer(
-  { id: t.u64(), risk: t.string(), reason: t.string() },
-  (ctx, { id, risk, reason }) => {
-    if (!['ok', 'caution', 'scam'].includes(risk)) throw new SenderError('bad risk');
-    const m = ctx.db.message.id.find(id);
-    if (!m) return;
-    ctx.db.message.id.update({ ...m, risk, risk_reason: clean(reason, 300) });
-    if (risk === 'scam') {
-      const c = ctx.db.contact.id.find(m.contact_id);
-      raiseAlert(ctx, m.patient, 'scam', `Possible scam from ${c?.name ?? 'unknown'}: ${clean(reason, 200)}`);
-    }
-  }
-);
 
 export const log_agent_step = spacetimedb.reducer(
   { patient: t.string(), run_id: t.string(), step: t.string(), detail: t.string() },

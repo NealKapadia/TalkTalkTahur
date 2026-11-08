@@ -58,8 +58,6 @@ const MessageRow = __t.row({
   channel: __t.string(),
   body: __t.string(),
   status: __t.string(),
-  risk: __t.string(),
-  risk_reason: __t.string(),
   created_at: __t.timestamp(),
 });
 const SuggestionRow = __t.row({
@@ -161,7 +159,6 @@ const reducersSchema = __reducers(
   __reducerSchema('add_suggestions', { patient: __t.string(), message_id: __t.u64(), contact_id: __t.u64(), texts: __t.array(__t.string()), source: __t.string() }),
   __reducerSchema('request_intent', { patient: __t.string(), keywords: __t.string() }),
   __reducerSchema('finish_intent', { id: __t.u64() }),
-  __reducerSchema('flag_message', { id: __t.u64(), risk: __t.string(), reason: __t.string() }),
   __reducerSchema('log_agent_step', { patient: __t.string(), run_id: __t.string(), step: __t.string(), detail: __t.string() }),
   __reducerSchema('raise_sos', { patient: __t.string(), detail: __t.string() }),
   __reducerSchema('ack_alert', { id: __t.u64(), by: __t.string() }),

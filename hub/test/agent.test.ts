@@ -1,18 +1,18 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import type { AgentPorts } from '../src/agent.ts';
 
 process.env.NVIDIA_API_KEY = 'test-key-not-real';
-import type { AgentPorts } from '../src/agent.ts';
-const { runAgent, screen, parseRepliesFromText } = await import('../src/agent.ts');
+process.env.NEMOTRON_BASE_URL = 'https://integrate.api.nvidia.com/v1';
+const { runAgent, parseRepliesFromText } = await import('../src/agent.ts');
 
 function fakePorts() {
-  const calls = { flags: [] as Array<[string, string]>, alerts: [] as string[], proposed: [] as Array<[string[], string]>, logs: [] as string[] };
+  const calls = { alerts: [] as string[], proposed: [] as Array<[string[], string]>, logs: [] as string[] };
   const ports: AgentPorts = {
     patientName: 'Neal',
     conversation: () => [{ who: 'Mom', text: 'Are you awake?' }],
     patientState: () => ({ heart_rate_now: 72 }),
     contact: () => ({ name: 'Mom', relation: 'mother', isCaregiver: true }),
-    flag: async (r, why) => { calls.flags.push([r, why]); },
     alertCaregivers: async why => { calls.alerts.push(why); },
     propose: async (r, s) => { calls.proposed.push([r, s]); },
     log: async (step, d) => { calls.logs.push(`${step}:${d}`); },
@@ -33,68 +33,58 @@ function scriptedFetch(responses: unknown[]) {
 
 const tc = (name: string, args: object, id = name) => ({ id, type: 'function', function: { name, arguments: JSON.stringify(args) } });
 
-test('rule screen catches classic scams and passes normal texts', () => {
-  assert.equal(screen('Your Medicare benefits are suspended. Call now and verify your account').risk, 'scam');
-  assert.equal(screen('Grandma I am in jail, please send bitcoin for bail').risk, 'scam');
-  assert.equal(screen('Want me to bring soup tonight?').risk, 'ok');
-  assert.equal(screen('Call me back urgently').risk, 'caution');
-});
-
-test('multi-step tool run: reads context, screens, proposes 4 replies', async () => {
+test('multi-step tool run: reads context, then proposes 4 replies', async () => {
   const { ports, calls } = fakePorts();
   const { fn, bodies } = scriptedFetch([
     { content: null, tool_calls: [tc('get_conversation', {}), tc('get_patient_state', {})] },
-    { content: null, tool_calls: [tc('screen_message', { risk: 'ok', reason: 'Known family member, ordinary question.' })] },
     { content: null, tool_calls: [tc('propose_replies', { replies: ['Yes, I am awake.', 'Very tired today.', 'Can you visit?', 'Call me later.'] })] },
   ]);
   const replies = await runAgent({ kind: 'reply', message: { body: 'Are you awake?' } }, ports, fn);
   assert.deepEqual(replies, ['Yes, I am awake.', 'Very tired today.', 'Can you visit?', 'Call me later.']);
-  assert.deepEqual(calls.flags, [['ok', 'Known family member, ordinary question.']]);
   assert.equal(calls.proposed[0][1], 'nemotron');
-  assert.equal(bodies.length, 3);
-  assert.ok(bodies[0].tools.length >= 4, 'tools offered');
+  assert.equal(bodies.length, 2);
+  assert.equal(bodies[0].tools.length, 4, 'tools offered');
   assert.equal(bodies[1].messages.filter((m: any) => m.role === 'tool').length, 2, 'tool results fed back');
+  assert.ok(calls.logs.some(l => l.startsWith('plan:')));
 });
 
-test('model cannot wave off a rule-detected scam', async () => {
+test('agent can alert caregivers once, then still proposes replies', async () => {
   const { ports, calls } = fakePorts();
   const { fn } = scriptedFetch([
-    { content: null, tool_calls: [tc('screen_message', { risk: 'ok', reason: 'looks fine' })] },
-    { content: null, tool_calls: [tc('propose_replies', { replies: ['a', 'b', 'c', 'd'] })] },
+    { content: null, tool_calls: [tc('alert_caregivers', { reason: 'Nurse says Neal fell' }), tc('alert_caregivers', { reason: 'again' }, 'b')] },
+    { content: null, tool_calls: [tc('propose_replies', { replies: ['I am okay.', 'Please come now.', 'Call Mom.', 'Thank you.'] })] },
   ]);
-  await runAgent({ kind: 'reply', message: { body: 'Send your SSN to verify your account now' } }, ports, fn);
-  assert.equal(calls.flags[0][0], 'caution');
+  await runAgent({ kind: 'reply', message: { body: 'Neal fell out of bed, is someone coming?' } }, ports, fn);
+  assert.deepEqual(calls.alerts, ['Nurse says Neal fell']);
+  assert.equal(calls.proposed.length, 1);
 });
 
-test('Nemotron outage falls back to rules: flags scam, alerts caregivers, protective replies', async () => {
+test('Nemotron outage falls back to built-in replies', async () => {
   const { ports, calls } = fakePorts();
   const { fn } = scriptedFetch([new Response('upstream down', { status: 503 })]);
-  const replies = await runAgent({ kind: 'reply', message: { body: 'Buy gift cards and text me the codes, urgent' } }, ports, fn);
-  assert.equal(calls.flags[0][0], 'scam');
-  assert.equal(calls.alerts.length, 1);
+  const replies = await runAgent({ kind: 'reply', message: { body: 'Want me to bring dinner?' } }, ports, fn);
   assert.equal(calls.proposed[0][1], 'fallback');
-  assert.ok(replies.some(r => /personal info/.test(r)));
+  assert.equal(replies.length, 4);
+  assert.ok(calls.logs.some(l => l.startsWith('fallback:')));
 });
 
 test('4xx on tools retries in JSON mode', async () => {
-  const { ports, calls } = fakePorts();
+  const { ports } = fakePorts();
   const { fn, bodies } = scriptedFetch([
     new Response('tools unsupported', { status: 400 }),
-    { content: '<think>hmm</think>{"risk":"ok","reason":"fine","replies":["Yes","No","Later","Why?"]}' },
+    { content: '<think>hmm</think>{"replies":["Yes","No","Later","Why?"]}' },
   ]);
   const replies = await runAgent({ kind: 'reply', message: { body: 'Dinner at 6?' } }, ports, fn);
   assert.deepEqual(replies, ['Yes', 'No', 'Later', 'Why?']);
   assert.equal(bodies[1].tools, undefined);
-  assert.equal(calls.flags[0][0], 'ok');
 });
 
-test('intent expansion does not screen', async () => {
+test('intent expansion produces full sentences', async () => {
   const { ports, calls } = fakePorts();
   const { fn } = scriptedFetch([
     { content: null, tool_calls: [tc('propose_replies', { replies: ['I would love some water.', 'Water later, please.', 'Is there cold water?', 'Water and a straw.'] })] },
   ]);
   await runAgent({ kind: 'intent', keywords: 'water' }, ports, fn);
-  assert.equal(calls.flags.length, 0);
   assert.equal(calls.proposed[0][0].length, 4);
 });
 

@@ -120,7 +120,7 @@ class Cloud:
                 snap = {
                     "suggestions": [s["text"] for s in sugg],
                     "inbox": None if not latest else {
-                        "id": latest["id"], "body": latest["body"], "risk": latest.get("risk", ""),
+                        "id": latest["id"], "body": latest["body"],
                         "from": (contact or {}).get("name") or "Someone",
                     },
                     "open_sos": open_sos,

@@ -1,7 +1,7 @@
 /**
  * BlinkTalk hub: connects SpacetimeDB to the outside world.
  *   - Photon: inbound iMessages -> receive_message; queued outbound -> delivered -> mark_message
- *   - Alerts: SOS / heart / scam alerts -> texts to caregivers, tier by tier as SpacetimeDB escalates
+ *   - Alerts: SOS / heart-rate alerts -> texts to caregivers, tier by tier as SpacetimeDB escalates
  *   - Agent: every inbound text or eye-picked intent -> Nemotron run -> suggestions
  */
 import type { Alert, Message, Intent } from '../../bindings/index.ts';
@@ -48,9 +48,6 @@ function portsFor(conn: Conn, contactId: bigint, messageId: bigint): AgentPorts 
       const c = contactById(conn, contactId);
       return { name: c?.name ?? 'Unknown sender', relation: c?.relation ?? 'unknown', isCaregiver: (c?.tier ?? 0) > 0 };
     },
-    flag: async (risk, reason) => {
-      if (messageId) await conn.reducers.flagMessage({ id: messageId, risk, reason });
-    },
     alertCaregivers: async reason => {
       await conn.reducers.raiseSos({ patient: P, detail: `Agent: ${reason}`.slice(0, 280) });
     },
@@ -76,20 +73,23 @@ const ALERT_HEAD: Record<string, string> = {
   sos: '🚨 SOS',
   heart_high: '⚠️ Heart rate high',
   heart_low: '⚠️ Heart rate low',
-  scam: '🛡️ Scam blocked',
 };
 
 async function notifyAlert(conn: Conn, msgr: Messenger, a: Alert) {
   if (a.patient !== P || a.acked_by || a.level <= a.notified_level) return;
   const name = displayName(conn);
   const p = conn.db.patient.handle.find(P);
-  const maxTier = a.kind === 'scam' ? 1 : a.level;
+  const maxTier = a.level;
   const targets = contactsOf(conn, P).filter(c => c.tier >= 1 && c.tier <= maxTier && c.tier > a.notified_level);
   const hr = p?.heart_bpm ? ` Heart rate ${p.heart_bpm} bpm.` : '';
   const escalated = a.level > 1 ? ` No one has answered yet, so BlinkTalk is now reaching tier ${a.level}.` : '';
-  const ask = a.kind === 'scam' ? '' : ' Reply OK when you are on it.';
+  const ask = ' Reply OK when you are on it.';
   const body = `${ALERT_HEAD[a.kind] ?? 'Alert'} from ${name} (BlinkTalk): ${a.detail}.${hr}${escalated}${ask}`;
   for (const c of targets) {
+    if (!msgr.canReach(c.address)) {
+      console.warn(`[alert] ${c.name} (${c.address}) has not texted the BlinkTalk line yet, so Photon cannot reach them.`);
+      continue;
+    }
     try {
       await msgr.send(c.address, body);
       console.log(`[alert] ${a.kind} L${a.level} -> ${c.name}`);
@@ -122,7 +122,7 @@ async function deliver(conn: Conn, msgr: Messenger, m: Message) {
 // ------------------------------------------------------------------ main
 async function main() {
   console.log(`[hub] patient=${P} spacetime=${settings.spacetimeUri}/${settings.spacetimeDb}`);
-  console.log(`[hub] nemotron model=${settings.nemotronModel} key=${redact(settings.nvidiaKey)}`);
+  console.log(`[hub] nemotron ${settings.nemotronBaseUrl} model=${settings.nemotronModel} key=${redact(settings.nvidiaKey)}`);
   const conn = await connect();
   console.log('[hub] connected to SpacetimeDB');
 

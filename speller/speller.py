@@ -148,7 +148,7 @@ class Speller:
         self.on_reply = on_reply
         self.on_expand = on_expand
         self.replies = []               # Nemotron suggestions for the latest text
-        self.inbox = None               # latest incoming text {"from", "body", "risk"}
+        self.inbox = None               # latest incoming text {"from", "body"}
         self.status = ""                # one-line feedback ("Sent to Mom", "asking Nemotron...")
         self.text = ""
         self.mode = "main"          # main | group | quick
@@ -465,10 +465,7 @@ class App:
             self.spoken_lbl.config(text=f'Spoken: "{sp.last_spoken}"' if sp.last_spoken else "")
         ib = sp.inbox
         if ib:
-            warn = ib.get("risk") == "scam"
-            prefix = "Likely scam, don't share info.  " if warn else ""
-            self.inbox_lbl.config(text=f'{prefix}{ib["from"]}: "{ib["body"]}"',
-                                  fg=RED if warn else VIOLET)
+            self.inbox_lbl.config(text=f'{ib["from"]}: "{ib["body"]}"', fg=VIOLET)
         else:
             self.inbox_lbl.config(text="")
 

@@ -153,11 +153,6 @@ code { font-size: 0.9em; background: var(--surface); padding: 1px 5px; border-ra
 .msg.in { align-self: flex-start; border-bottom-left-radius: 5px; }
 .msg .meta { font-size: 13px; opacity: 0.8; display: flex; gap: 8px; flex-wrap: wrap; }
 .msg time, .said time { opacity: 0.75; }
-.msg.scam { background: transparent; border: 2px solid var(--sos); }
-.msg.scam p:not(.risk) { text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--sos) 50%, transparent); }
-.msg.caution { border: 2px dashed var(--warn); }
-.risk { font: 14px/1.4 var(--ui) !important; color: var(--sos); margin-top: 6px !important; }
-.risk.soft { color: var(--warn); }
 .st { font-size: 12px; padding: 0 6px; border-radius: 999px; background: rgba(255,255,255,0.25); }
 .st-failed { background: var(--sos); }
 .said { align-self: center; text-align: center; font: italic 17px/1.4 var(--voice); color: var(--muted); max-width: 90%; }
@@ -182,7 +177,7 @@ button[type='submit'] { padding: 9px 16px; border-radius: var(--r-sm); border: 0
 .run.old { border-left-color: var(--line); opacity: 0.6; }
 .step { display: grid; grid-template-columns: 64px 1fr; gap: 8px; font-size: 14px; }
 .step .k { color: var(--gaze); font-weight: 700; }
-.step-fallback .k, .step-error .k { color: var(--warn); }
+.step-fallback .k, .step-retry .k { color: var(--warn); }
 .step-reply .v { font-family: var(--voice); font-size: 15px; }
 .step .v { overflow-wrap: anywhere; }
 

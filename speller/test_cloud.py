@@ -23,8 +23,8 @@ TABLES = {
     "suggestion": (["id", "patient", "message_id", "contact_id", "text", "rank", "source", "created_at"],
                    [[2, "neal", 7, 3, "Not tonight.", 1, "nemotron", 0],
                     [1, "neal", 7, 3, "Yes, come at 7.", 0, "nemotron", 0]]),
-    "message": (["id", "patient", "contact_id", "direction", "channel", "body", "status", "risk", "risk_reason", "created_at"],
-                [[7, "neal", 3, "in", "imessage", "Can I visit tonight?", "received", "ok", "", 0]]),
+    "message": (["id", "patient", "contact_id", "direction", "channel", "body", "status", "created_at"],
+                [[7, "neal", 3, "in", "imessage", "Can I visit tonight?", "received", 0]]),
     "contact": (["id", "patient", "name", "address", "relation", "tier"], [[3, "neal", "Mom", "+14695550101", "mother", 1]]),
     "alert": (["id", "patient", "kind", "detail", "level", "notified_level", "acked_by", "created_at", "acked_at"],
               [[4, "neal", "sos", "x", 1, 1, "Mom", 0, {"some": 0}]]),
@@ -82,7 +82,7 @@ class Tests(unittest.TestCase):
     def test_speller_reply_flow(self):
         sent, expanded = [], []
         s = sp_mod.Speller(say=lambda t: None, on_reply=sent.append, on_expand=expanded.append)
-        fresh = s.set_cloud_state(["Yes, come at 7.", "Not tonight."], {"from": "Mom", "body": "Visit?", "risk": "ok"})
+        fresh = s.set_cloud_state(["Yes, come at 7.", "Not tonight."], {"from": "Mom", "body": "Visit?"})
         self.assertTrue(fresh)
         self.assertEqual(s.items[s.idx], ("reply", "Yes, come at 7."))
         s.select()

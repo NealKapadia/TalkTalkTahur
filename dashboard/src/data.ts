@@ -139,14 +139,14 @@ function startDemo(set: (s: Snapshot) => void) {
   const push = () => set({ ...s, patient: s.patient && { ...s.patient }, contacts: [...s.contacts], messages: [...s.messages], suggestions: [...s.suggestions], alerts: [...s.alerts], eyes: [...s.eyes], heart: [...s.heart], agent: [...s.agent] });
   for (let i = 0; i < 60; i++) s.heart.push({ id: nid(), patient: 'neal', bpm: 70 + Math.round(4 * Math.sin(i / 5) + Math.random() * 3), quality: 0.8, at: now() });
   const msg = (contact_id: bigint, direction: string, body: string, extra: Partial<Message> = {}) =>
-    s.messages.push({ id: nid(), patient: 'neal', contact_id, direction, channel: contact_id ? 'imessage' : 'speech', body, status: direction === 'in' ? 'received' : 'sent', risk: '', risk_reason: '', created_at: now(), ...extra });
-  msg(1n, 'in', 'Are you still awake, sweetheart?', { risk: 'ok' });
+    s.messages.push({ id: nid(), patient: 'neal', contact_id, direction, channel: contact_id ? 'imessage' : 'speech', body, status: direction === 'in' ? 'received' : 'sent', created_at: now(), ...extra });
+  msg(1n, 'in', 'Are you still awake, sweetheart?');
   msg(1n, 'out', 'Yes. Can you come by?');
   msg(0n, 'out', 'Thank you.', { status: 'spoken' });
   const step = (step: string, detail: string) => s.agent.push({ id: nid(), patient: 'neal', run_id: detail.slice(1, 5), step, detail, at: now() });
   step('plan', '[a1f3] Incoming text from Mom. Plan: read context -> screen for fraud -> draft 4 replies.');
   step('tool', '[a1f3] get_conversation({}) -> 3 messages');
-  step('tool', '[a1f3] screen_message({"risk":"ok"}) -> Known family member, ordinary question.');
+  step('tool', '[a1f3] get_patient_state({}) -> {"heart_rate_now":72,"status":"idle","local_time":"Sunday 1:12 AM"}');
   step('reply', '[a1f3] Yes, I am awake. | Very tired today. | Can you come by? | Call me later.');
 
   const timers: number[] = [];
@@ -162,16 +162,16 @@ function startDemo(set: (s: Snapshot) => void) {
   let t = typeOut(800, "I'd like some water");
   at(t + 600, () => { s.patient!.last_spoken = "I'd like some water, please."; s.patient!.draft = ''; s.patient!.status = 'speaking'; msg(0n, 'out', "I'd like some water, please.", { status: 'spoken' }); eye('select'); });
   at(t + 3000, () => {
-    msg(4n, 'in', 'MEDICARE ALERT: your benefits are suspended. Verify your account and SSN at bit.ly/mcare-fix within 24 hours.', { risk: 'scam', risk_reason: 'asks for a Social Security number; claims an account was suspended; suspicious link' });
-    s.contacts.push({ id: 4n, patient: 'neal', name: '+1 800 555 0199', address: '+18005550199', relation: 'unknown', tier: 0 });
-    step('plan', '[b7c2] Incoming text from +1 800 555 0199. Plan: read context -> screen for fraud -> draft 4 replies.');
-    step('tool', '[b7c2] screen_message({"risk":"scam"}) -> impersonates Medicare, asks for SSN, shortened link');
-    step('tool', '[b7c2] alert_caregivers -> Mom notified');
-    step('reply', "[b7c2] I don't share personal info by text. | I'll check with my family first. | Please stop texting me. | Who is this?");
-    s.suggestions = ["I don't share personal info by text.", "I'll check with my family first.", 'Please stop texting me.', 'Who is this?']
-      .map((text, rank) => ({ id: nid(), patient: 'neal', message_id: 0n, contact_id: 4n, text, rank, source: 'nemotron', created_at: now() }));
-    s.alerts.push({ id: nid(), patient: 'neal', kind: 'scam', detail: 'Possible scam from +1 800 555 0199: impersonates Medicare and asks for an SSN', level: 1, notified_level: 1, acked_by: 'Mom', created_at: now(), acked_at: now() });
+    msg(2n, 'in', 'Hey bro, want me to bring dinner after my shift? Pho or tacos?');
+    step('plan', '[b7c2] Text from Adrian. Plan: read the conversation and Neal\'s state, check whether caregivers need to know, draft 4 replies.');
+    step('tool', '[b7c2] get_conversation({}) -> 1 message');
+    step('tool', '[b7c2] get_patient_state({}) -> {"heart_rate_now":73,"favourite_phrases":["I\'d like some water, please.","Thank you."]}');
+    step('tool', '[b7c2] propose_replies(4 options)');
+    step('reply', '[b7c2] Pho, please! | Tacos sound great. | Not hungry tonight. | What time are you coming?');
+    s.suggestions = ['Pho, please!', 'Tacos sound great.', 'Not hungry tonight.', 'What time are you coming?']
+      .map((text, rank) => ({ id: nid(), patient: 'neal', message_id: 0n, contact_id: 2n, text, rank, source: 'nemotron', created_at: now() }));
   });
+  at(t + 6500, () => { eye('select'); eye('select'); msg(2n, 'out', 'Pho, please!'); s.suggestions = []; s.patient!.last_spoken = 'Pho, please!'; });
   at(t + 9000, () => { eye('sos'); s.patient!.status = 'sos'; s.patient!.heart_bpm = 118; s.alerts.push({ id: nid(), patient: 'neal', kind: 'sos', detail: 'Triple blink on the speller', level: 1, notified_level: 1, acked_by: '', created_at: now(), acked_at: undefined }); });
   const beat = window.setInterval(() => {
     const p = s.patient!;
@@ -187,7 +187,7 @@ function startDemo(set: (s: Snapshot) => void) {
     ackAlert: (aid, by) => { const a = s.alerts.find(x => x.id === aid); if (a) { a.acked_by = by; a.acked_at = now(); } if (s.patient!.status === 'sos') s.patient!.status = 'idle'; push(); },
     addContact: (name, address, relation, tier) => { s.contacts.push({ id: nid(), patient: 'neal', name, address, relation, tier }); push(); },
     removeContact: cid => { s.contacts = s.contacts.filter(c => c.id !== cid); push(); },
-    simulateText: (address, name, body) => { let c = s.contacts.find(x => x.address === address); if (!c) { c = { id: nid(), patient: 'neal', name: name || address, address, relation: 'unknown', tier: 0 }; s.contacts.push(c); } msg(c.id, 'in', body, { risk: 'ok' }); push(); },
+    simulateText: (address, name, body) => { let c = s.contacts.find(x => x.address === address); if (!c) { c = { id: nid(), patient: 'neal', name: name || address, address, relation: 'unknown', tier: 0 }; s.contacts.push(c); } msg(c.id, 'in', body); push(); },
     sendAsPatient: (cid, body) => { msg(cid, 'out', body); push(); },
     clearDemo: () => { s.messages = []; s.alerts = []; s.suggestions = []; s.agent = []; s.eyes = []; push(); },
   };

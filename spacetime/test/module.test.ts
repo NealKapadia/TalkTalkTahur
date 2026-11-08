@@ -63,15 +63,6 @@ test('inbound text creates a contact; reply_latest queues an iMessage and clears
   assert.equal([...h.db.phrase.iter()][0].uses, 1);
 });
 
-test('scam flag raises a scam alert', () => {
-  const { h, run } = harness();
-  run(ctx => mod.receive_message(ctx, { patient: 'neal', address: '+18005550000', sender_name: '', channel: 'sms', body: 'Your Medicare card is suspended, reply with SSN' }));
-  const m = [...h.db.message.iter()][0];
-  run(ctx => mod.flag_message(ctx, { id: m.id, risk: 'scam', reason: 'asks for SSN' }));
-  assert.equal(h.db.message.id.find(m.id)!.risk, 'scam');
-  assert.equal([...h.db.alert.iter()][0].kind, 'scam');
-});
-
 test('sustained high heart rate raises one alert; noisy readings do not', () => {
   const { h, run } = harness();
   for (let i = 0; i < 4; i++) run(ctx => mod.heartbeat(ctx, { patient: 'neal', bpm: 140, quality: 0.2 }));
