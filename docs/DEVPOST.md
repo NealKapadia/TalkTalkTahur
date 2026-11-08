@@ -1,6 +1,6 @@
 # Devpost submission
 
-**Title:** Blink Blink Blink Tahur
+**Title:** Blink Blink Blink Talkur (aka BlinkTalk)
 
 **Tagline:** BlinkTalk lets people who can't speak talk, text and call for help with only their eyes. Two blinks to choose, three to switch it on or off, five to call for help.
 

@@ -1,11 +1,11 @@
-# Blink Blink Blink Tahur
+# Blink Blink Blink Talkur (aka BlinkTalk)
 
 **BlinkTalk: talk, text and call for help with your eyes.** Two blinks to choose, three to switch it on or off, five to call for help.
 
 People with ALS, locked-in syndrome or a severe stroke often understand everything and can say nothing. BlinkTalk reads eye movements from three electrodes on the forehead and turns glances and blinks into speech, iMessages and SOS alerts. Family can see what their person is saying, live, from anywhere.
 
 HackUTD 2026: Zero Day · Tracks: **Spacetime**, **Photon**, **NVIDIA Nemotron**
-Team: Neal Kapadia, Adrian Miciano, Alexander Montesino
+Built by Neal Kapadia
 
 ```
  electrodes ─► TI AFE4950EVM ─► SK-AM62B (on-device ML: blink / left / right)

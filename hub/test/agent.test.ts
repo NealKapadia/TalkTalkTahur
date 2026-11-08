@@ -109,7 +109,7 @@ test('keywords naming a person: Nemotron routes each message to the right contac
 });
 
 test('contact matching handles names, relations and nicknames', () => {
-  const people = [{ id: 1n, name: 'Mom', relation: 'mother' }, { id: 2n, name: 'Alex Montesino', relation: 'brother' }];
+  const people = [{ id: 1n, name: 'Mom', relation: 'mother' }, { id: 2n, name: 'Alex Kim', relation: 'brother' }];
   assert.equal(resolveContact('alex', people), 2n);
   assert.equal(resolveContact('mum', people), 1n);
   assert.equal(resolveContact('my brother', people), 2n);

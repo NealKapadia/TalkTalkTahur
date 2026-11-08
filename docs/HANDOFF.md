@@ -4,7 +4,7 @@ Context for any coding agent (Cursor, Claude Code, Windsurf…) picking up this 
 
 ## The project in one paragraph
 
-**Blink Blink Blink Tahur** (product name **BlinkTalk**) lets people who can't speak or move (ALS, locked-in syndrome, severe stroke) talk, text and call for help with only their eyes. Three forehead electrodes feed a **TI AFE4950EVM**. A per-user scikit-learn model on a **TI SK-AM62B** classifies eye movements on-device: left/right glances move a highlight, **2 blinks = choose, 3 blinks = switch BlinkTalk on/off (rest mode), 5 blinks = SOS** (4 is deliberately unused). The patient uses a full-screen browser "patient screen". Family use a caregiver dashboard. Texts arrive and leave over real iMessage through **Photon**. An **NVIDIA Nemotron** agent drafts replies, routes keyword messages to the right person and describes photos. All state and rules live in a **SpacetimeDB** module.
+**Blink Blink Blink Talkur (aka BlinkTalk)** (a play on the "Tung Tung Tung Sahur" meme; the product name inside the app is **BlinkTalk**), a solo project by **Neal Kapadia**, lets people who can't speak or move (ALS, locked-in syndrome, severe stroke) talk, text and call for help with only their eyes. Three forehead electrodes feed a **TI AFE4950EVM**. A per-user scikit-learn model on a **TI SK-AM62B** classifies eye movements on-device: left/right glances move a highlight, **2 blinks = choose, 3 blinks = switch BlinkTalk on/off (rest mode), 5 blinks = SOS** (4 is deliberately unused). The patient uses a full-screen browser "patient screen". Family use a caregiver dashboard. Texts arrive and leave over real iMessage through **Photon**. An **NVIDIA Nemotron** agent drafts replies, routes keyword messages to the right person and describes photos. All state and rules live in a **SpacetimeDB** module.
 
 ## Hackathon tracks entered (max 3 company tracks)
 
@@ -70,15 +70,49 @@ Verified live by the user: Nemotron tool calls through build.nvidia.com, the Pho
 
 - **Git:** commits authored *and* committed as `Neal Kapadia <nkapadia15@outlook.com>`, **with no AI co-author or session trailers**. Remote `https://github.com/NealKapadia/TalkTalkTahur.git`, branch `main`. The user pushes from their laptop.
 - **Design: "lamplight".** No purple/violet anywhere. Patient screen: warm dark `#17130F`, paper ink `#F3EADB`, lamp amber focus `#F6B24A` (glowing), sage `#8FCB9B` ok, red `#E8503A` SOS. Rationale: a bedside screen at night should emit no blue light. Dashboard: stone `#E9ECE7` / walnut `#2A211A` / amber, automatic night mode = lamplight. Fonts: **Literata** (anything the patient says) + **Atkinson Hyperlegible** (UI, low-vision). Soft tactile (neumorphic) tiles/panels, SVG icons only (no emoji), reduced-motion respected.
-- **Copy:** README says "the patient" (not "Neal"). The demo family: **Mom** (tier 1), **Alex** (brother, tier 2; never "Adrian" in demo data), Night nurse (tier 3).
+- **Copy:** solo project: credit **Neal Kapadia** only. Title "Blink Blink Blink Talkur (aka BlinkTalk)". README says "the patient" (not "Neal"). The demo family: **Mom** (tier 1), **Alex** (brother, tier 2), Night nurse (tier 3).
 - **Gestures:** 2 = choose, 3 = on/off, 5 = SOS, 4 = nothing. SOS works while paused; toggling never hides an SOS.
 - **Nemotron's role** is a *keyboard accelerator that never speaks for the patient*: it drafts, the patient chooses. Messages sent from a suggestion are marked `assisted`, and the dashboard reports eye movements saved (`spellCost()` simulation).
 - `docs/HARDWARE.md` still mentions "UT Dallas HackEdge 2026". The user knows; leave how to describe the project's history to them.
 
-## Open items / ideas (in priority order)
+## Open items (in priority order)
 
-1. Live end-to-end with the board + Photon + Nemotron, then record the demo video (see `docs/PITCH.md`).
-2. Devpost submission (copy in `docs/DEVPOST.md`), repo made public, push.
-3. Optional: image/GIF *replies* (Nemotron can't generate images; would need an image model such as FLUX on build.nvidia.com plus Photon attachment upload).
-4. Optional MLH side prizes: GoDaddy Registry domain, DEV Writing Challenge (post-event article).
-5. Security hardening if time allows: SpacetimeDB reducers are callable anonymously; restrict caregiver/hub reducers by identity.
+1. Live end-to-end with the board + Photon + Nemotron (including a photo), then record the demo video (see `docs/PITCH.md`).
+2. Devpost submission (copy in `docs/DEVPOST.md`), repo made public, push. Title: "Blink Blink Blink Talkur (aka BlinkTalk)", solo: Neal Kapadia.
+3. MLH side prizes (below), in the order given, only after 1 and 2 are safe.
+4. Security hardening if time allows: SpacetimeDB reducers are callable anonymously; restrict caregiver/hub reducers by identity.
+
+## MLH side prizes: plan
+
+MLH prizes don't count against the 3 company tracks (confirm with an organizer). Each one is judged on *meaningful* use, so every idea gives the sponsor tech a real job. **Hard rule: SpacetimeDB stays the live backend and the source of truth.** Anything below is an add-on that reads from or mirrors it, so the Spacetime "majority of backend" requirement stays true. Never move live state out of SpacetimeDB. Ranked by value per hour:
+
+### 1. GoDaddy Registry: Best Domain Name (≈10 min)
+Register a domain with the MLH code, e.g. `blinkblinkblinktalkur.tech` or `blinktalk.us` (check availability). Point it at the hosted dashboard (Vultr, below) or a one-page site. Put it on the Devpost and the deck's cover.
+
+### 2. Gemini: "Picture replies" + natural voice (≈1.5–2 h)
+- **Picture replies (image generation):** a new ribbon item "Send as a picture" (`kind: 'picture'`) on any reply or spelled message. Hub flow: SpacetimeDB reducer `request_picture(patient, contact_id, text)` inserts a `picture_request` row → hub calls Gemini image generation → uploads the image to Photon → sends it to the contact → `mark_picture(id, status)`.
+  - Gemini: `POST https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_IMAGE_MODEL}:generateContent?key=${GEMINI_API_KEY}` with `{"contents":[{"parts":[{"text": prompt}]}]}`; the image comes back as base64 in `candidates[0].content.parts[i].inlineData` (`mimeType`, `data`). Use a current Gemini image model (verify the model id in Google AI Studio; make it an env var). Prompt: "A warm, simple illustrated sticker that says '<text>' for a family chat, no photorealistic people".
+  - Photon upload: `POST /v1/projects/{id}/attachments` with an `idempotency-key` header and **exactly two multipart parts**: JSON `{contentType, sizeBytes, filename}` then the file bytes (`sizeBytes` must equal the byte length). The response is an Attachment (`id`). Then send with `content: {type: 'attachment', attachmentId}` in the usual `POST /v1/projects/{id}/messages`.
+  - Story for judges: someone who can't speak can still send a "Pho please!" sticker or a birthday card to a grandchild with two blinks. Keep Nemotron as the agent; Gemini only makes the picture.
+- **Optional, the patient's own voice:** a Gemini TTS model to speak "Say it" phrases in a chosen warm voice instead of the browser voice (generate audio in the hub, play it on the patient screen). Only if time allows.
+
+### 3. Vultr: hosted, always-on BlinkTalk, optionally with self-hosted Nemotron (≈1 h; GPU +1 h)
+- Use `deploy/Dockerfile` (hub + built dashboard on :8080) on a Vultr instance (MLH usually provides Vultr credits). SpacetimeDB on Maincloud (`spacetime publish --server maincloud -y blinktalk-neal`). Point the GoDaddy domain at it. Judges scan a QR code and watch the live dashboard on their phones. Only one hub runs at a time: stop the laptop hub.
+- Stretch that makes it "best use": a **Vultr Cloud GPU** running Nemotron through Ollama (`ollama pull nemotron-3-nano`) or vLLM, with the hub's `NEMOTRON_BASE_URL` pointing at it. That's "our own Nemotron on our own GPU", no third-party AI API.
+- `scripts/maritime_deploy.py` shows the same idea for Maritime; Vultr is simpler: create an instance, install Docker, `docker build -f deploy/Dockerfile -t blinktalk . && docker run -d -p 80:8080 --env-file .env blinktalk`.
+
+### 4. Tiger Data: long-term health and communication history (≈1–1.5 h)
+- SpacetimeDB keeps the live window (it prunes heart samples and eye events to the latest few hundred). Add `hub/src/history.ts` that subscribes to `heart_sample`, `eye_event`, `message` and `alert` inserts and **mirrors** them into a Tiger Data (TimescaleDB on Postgres) hypertable: `CREATE TABLE vitals(time timestamptz, patient text, kind text, value double precision); SELECT create_hypertable('vitals','time');`, plus `events(time, patient, kind, detail)`. Use `pg` with `TIGER_DATABASE_URL`.
+- Value: a continuous aggregate (`time_bucket('1 day', time)`) gives a "Weekly report" panel on the dashboard (served by a small hub HTTP endpoint): words spoken per day, eye movements per message, average heart rate, SOS count, and **gesture-accuracy drift over weeks**, an early signal of ALS progression for the care team. That's a story SpacetimeDB's live window can't tell.
+- Keep it out of the live path: if Tiger is down, everything else works.
+
+### 5. MongoDB Atlas (≈1 h; pick it over Tiger only if you have time for one database)
+Best fit: **Atlas Vector Search as the patient's long-term phrase memory**. Embed every message the patient sends (any embedding model) into an Atlas collection; when Nemotron drafts replies, add a `recall_phrases(query)` tool that returns the patient's own past phrasings, so suggestions sound more like them over months. Mirror-only, like Tiger. Doing both Tiger and Mongo risks looking like database collecting; do it only with a clear, separate job like this one.
+
+### 6. Solana: tamper-proof emergency log (≈1 h, lowest priority)
+For care facilities, an SOS audit trail matters (when help was called, who answered, how fast). On `alert` insert and acknowledgement, the hub writes a **Solana devnet Memo** transaction: `{"patient":"<hash>","kind":"sos","raised":"…","acked_by_role":"tier1","seconds":42}`. Hash or omit names, and never put health data on-chain. Show the transaction link on the dashboard's alert log. Use `@solana/web3.js` + the Memo program with a devnet keypair in `.env` (`SOLANA_SECRET_KEY`), airdropping devnet SOL. Skip it if it feels forced in the pitch.
+
+### Also
+- **DEV Writing Challenge ($100):** after the event, publish the build story on dev.to (adapt `docs/DEVPOST.md`).
+- **SpaceXSI raffle:** qualifies only if the project is built with Cursor and the Grok bot that weekend.
+- For every add-on: env-var gated (feature off when its key is missing), unit-tested with mocked fetch like `hub/test/*.test.ts`, never blocking the patient screen, and listed in the README's sponsor table and `docs/DEVPOST.md`.
