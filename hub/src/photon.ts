@@ -24,12 +24,29 @@ export interface InboundText {
   address: string;   // E.164 or email handle of whoever wrote
   body: string;
   channel: string;
+  attachmentIds?: string[];   // photos etc.; fetch the bytes with messenger.download()
+}
+
+export interface Download { data: Buffer; contentType: string }
+
+/** Text + attachment ids from a Photon message's content (text, attachment, or a group of parts). */
+export function readContent(content: any): { text: string; attachmentIds: string[] } | null {
+  if (!content) return null;
+  if (content.type === 'text') return { text: String(content.text ?? ''), attachmentIds: [] };
+  if (content.type === 'attachment' && content.attachmentId) return { text: '', attachmentIds: [String(content.attachmentId)] };
+  if (content.type === 'group' && Array.isArray(content.parts)) {
+    const text = content.parts.filter((p: any) => p?.type === 'text').map((p: any) => String(p.text ?? '')).join(' ').trim();
+    const attachmentIds = content.parts.filter((p: any) => p?.type === 'attachment' && p.attachmentId).map((p: any) => String(p.attachmentId));
+    return text || attachmentIds.length ? { text, attachmentIds } : null;
+  }
+  return null;
 }
 
 export interface Messenger {
   live: boolean;
   send(address: string, body: string): Promise<void>;
   canReach(address: string): boolean;
+  download(attachmentId: string): Promise<Download>;
   stop(): void;
 }
 
@@ -92,14 +109,15 @@ export function createPhoton(opts: {
         if (!m?.id || seen.has(m.id)) continue;
         seen.add(m.id);
         if (m.createdAt && m.createdAt > newest) newest = m.createdAt;
-        if (m.status !== 'received' || m.content?.type !== 'text') continue;
+        const content = m.status === 'received' ? readContent(m.content) : null;
+        if (!content) continue;
         const from = m.sentBy?.handle as string | undefined;
         const line = (m.receivedBy ?? m.addressedTo) as { id?: string } | undefined;
         if (!from || !line?.id || !m.space?.id || m.sentBy?.id === line.id) continue;
         routes.set(handleKey(from), { spaceId: m.space.id, senderId: line.id, platform: m.platform, lastAt: m.createdAt });
         saveRoutes();
         handled++;
-        await opts.onText({ address: handleKey(from), body: String(m.content.text ?? ''), channel: m.platform ?? 'imessage' });
+        await opts.onText({ address: handleKey(from), body: content.text, channel: m.platform ?? 'imessage', attachmentIds: content.attachmentIds });
       }
       pageToken = page.nextPageToken;
     } while (pageToken);
@@ -122,6 +140,18 @@ export function createPhoton(opts: {
     live: true,
     pollOnce,
     canReach: (address: string) => routes.has(handleKey(address)),
+    async download(attachmentId: string): Promise<Download> {
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const res = await f(`${base}/v1/projects/${opts.projectId}/attachments/${attachmentId}/content`, { headers: { Authorization: headers.Authorization } });
+        if (res.status === 409) {                       // ATTACHMENT_NOT_READY: Photon asks us to retry
+          await new Promise(r => setTimeout(r, 1000 * Number(res.headers.get('retry-after') ?? '5')));
+          continue;
+        }
+        if (!res.ok) throw new PhotonError(`download attachment HTTP ${res.status}`);
+        return { data: Buffer.from(await res.arrayBuffer()), contentType: res.headers.get('content-type') ?? 'application/octet-stream' };
+      }
+      throw new PhotonError('attachment never became ready');
+    },
     async send(address: string, body: string) {
       const route = routes.get(handleKey(address));
       if (!route) {
@@ -150,6 +180,7 @@ export async function startPhoton(onText: (t: InboundText) => Promise<void>): Pr
       live: false,
       canReach: () => true,
       async send(address, body) { console.log(`[photon:sim] -> ${address}: ${body}`); },
+      async download() { throw new PhotonError('no attachments in simulated mode'); },
       stop() {},
     };
   }

@@ -130,6 +130,7 @@ function systemPrompt(name: string): string {
     'You never message anyone yourself. You prepare 4 reply options that sound like the patient: first person, warm, plain, at most 12 words each.',
     'Make the 4 options meaningfully different (for example yes / no / not now / a question back). Use facts from the tools; never invent plans, names or medical facts.',
     'Workflow: 1) call get_conversation and get_patient_state; 2) call alert_caregivers only if there is a genuine safety concern; 3) call propose_replies.',
+    'Text like "[Photo: ...]" is a description of a photo they were sent; reply to the photo naturally (e.g. "That looks delicious!").',
   ].join('\n');
 }
 
@@ -213,6 +214,45 @@ export function resolveContact(to: string, contacts: Array<{ id: bigint; name: s
     (alias[c.relation.toLowerCase()] ?? []).includes(t));
   return loose?.id;
 }
+
+// ------------------------------------------------------------------ photos (Nemotron vision)
+export const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+
+/**
+ * Describe a photo someone texted the patient, in one or two plain sentences, so it
+ * can be shown on their screen and used as context for replies. Uses the same
+ * Nemotron VL model (image as a data URL). Returns null if no model is reachable.
+ */
+export async function describeImage(
+  image: { data: Buffer; contentType: string }, senderName: string, caption: string, fetchFn: Fetch = fetch,
+): Promise<string | null> {
+  if (!agentConfigured() || !image.contentType.startsWith('image/') || image.data.length > MAX_IMAGE_BYTES) return null;
+  const prompt = `${senderName} texted this photo to someone who cannot move or speak${caption ? `, with the words "${caption}"` : ''}. ` +
+    'Describe what matters in it in one or two short, warm, concrete sentences (people, food, places, text in the image). No preamble.';
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', Accept: 'application/json' };
+  if (settings.nvidiaKey) headers.Authorization = `Bearer ${settings.nvidiaKey}`;
+  const body: Record<string, unknown> = {
+    model: settings.visionModel || settings.nemotronModel,
+    messages: [{ role: 'user', content: [
+      { type: 'text', text: prompt },
+      { type: 'image_url', image_url: { url: `data:${image.contentType};base64,${image.data.toString('base64')}` } },
+    ] }],
+    temperature: 0.2, max_tokens: 160,
+  };
+  if (!settings.nemotronThinking && !isLocal()) body.chat_template_kwargs = { enable_thinking: false };
+  try {
+    const res = await fetchFn(`${settings.nemotronBaseUrl}/chat/completions`, { method: 'POST', headers, body: JSON.stringify(body) });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { choices?: Array<{ message: { content: string | null } }> };
+    const text = stripThinking(data.choices?.[0]?.message?.content ?? '').replace(/\s+/g, ' ').trim();
+    return text ? text.slice(0, 280) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** "[Photo: …]" is how a described photo travels through SpacetimeDB; the screens render it. */
+export const photoTag = (description: string | null) => (description ? `[Photo: ${description}]` : '[Photo]');
 
 // ------------------------------------------------------------------ the run
 export async function runAgent(task: Task, ports: AgentPorts, fetchFn: Fetch = fetch): Promise<string[]> {

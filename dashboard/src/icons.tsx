@@ -13,6 +13,7 @@ const PATHS: Record<string, string> = {
   'chevron-left': 'M15 18l-6-6 6-6',
   'chevron-right': 'M9 18l6-6-6-6',
   arrows: 'M8 7l-5 5 5 5 M16 7l5 5-5 5',
+  image: 'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z M8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z M21 15l-5-5L5 21',
 };
 
 export type IconName = keyof typeof PATHS;

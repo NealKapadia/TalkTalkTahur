@@ -47,6 +47,8 @@ body:has(.pt) { background: #17130f; }
 .pt-from { display: block; color: var(--focus); font-weight: 700; font-size: 21px; margin-bottom: 6px; }
 .pt-msg { margin: 0; font: 400 clamp(26px, 3vw, 38px)/1.32 var(--voice); max-width: 46ch; }
 .pt-quiet { color: var(--muted); font-style: italic; }
+.pt-photo { margin: 8px 0 0; display: flex; gap: 12px; align-items: baseline; font: italic 400 clamp(22px, 2.4vw, 30px)/1.35 var(--voice); color: var(--ink); max-width: 50ch; }
+.pt-photo .icon { color: var(--focus); flex: none; transform: translateY(0.12em); }
 
 /* their own words */
 .pt-compose { align-self: center; padding: 0 44px; }

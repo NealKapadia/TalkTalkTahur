@@ -34,6 +34,7 @@ export const settings = {
   spacetimeDb: env('SPACETIME_DB', 'blinktalk'),
   nvidiaKey: env('NVIDIA_API_KEY'),
   nemotronModel: env('NEMOTRON_MODEL', 'nvidia/nemotron-3.5-super-vl-120b-a12b'),
+  visionModel: env('NEMOTRON_VISION_MODEL'),   // optional separate VL model for photos; defaults to NEMOTRON_MODEL
   nemotronBaseUrl: env('NEMOTRON_BASE_URL', 'https://integrate.api.nvidia.com/v1').replace(/\/$/, ''),
   nemotronThinking: env('NEMOTRON_THINKING', '0') === '1',
   nemotronTimeoutMs: Number(env('NEMOTRON_TIMEOUT', '90')) * 1000,

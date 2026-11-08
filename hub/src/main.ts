@@ -8,7 +8,7 @@ import type { Alert, Message, Intent } from '../../bindings/index.ts';
 import { settings, redact } from './env.ts';
 import { connect, contactById, contactsOf, conversation, recentHeart, topPhrases, type Conn } from './db.ts';
 import { startPhoton, type Messenger } from './photon.ts';
-import { runAgent, type AgentPorts, type Task } from './agent.ts';
+import { runAgent, describeImage, photoTag, type AgentPorts, type Task } from './agent.ts';
 
 const P = settings.patient;
 const ACK_WORDS = /^\s*(ok(ay)?|on it|coming|got it|here|omw|on my way|i'?m here|yes|👍)\b/i;
@@ -133,7 +133,24 @@ async function main() {
   console.log('[hub] connected to SpacetimeDB');
 
   const recentAcks = new Map<string, number>();
-  const msgr = await startPhoton(async ({ address, body, channel }) => {
+  let msgr: Messenger;
+  msgr = await startPhoton(async ({ address, body, channel, attachmentIds }) => {
+    if (attachmentIds?.length) {
+      const sender = contactsOf(conn, P).find(c => c.address === address)?.name ?? 'Someone';
+      const tags: string[] = [];
+      for (const id of attachmentIds.slice(0, 3)) {
+        try {
+          const image = await msgr.download(id);
+          const description = await describeImage(image, sender, body);
+          console.log(`[photo] ${sender}: ${description ?? '(no description)'}`);
+          tags.push(photoTag(description));
+        } catch (err) {
+          console.error('[photo] could not read attachment', err);
+          tags.push(photoTag(null));
+        }
+      }
+      body = [body, ...tags].filter(Boolean).join(' ');
+    }
     if (ACK_WORDS.test(body) && openAlerts(conn).length) {
       recentAcks.set(address, Date.now());
       await conn.reducers.ackAlertByReply({ patient: P, address });

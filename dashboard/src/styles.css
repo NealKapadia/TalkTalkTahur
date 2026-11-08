@@ -237,3 +237,6 @@ button { cursor: pointer; }
 .saved strong { color: var(--lamp-ink); }
 .onscreen { outline: none; box-shadow: 9px 9px 20px var(--lo), -9px -9px 20px var(--hi), inset 0 0 0 2px var(--lamp); }
 .tierchip { box-shadow: 2px 2px 5px var(--lo); }
+
+.msg .photo { font-style: italic; display: flex; gap: 8px; align-items: baseline; }
+.msg .photo .icon { flex: none; color: var(--lamp-ink); transform: translateY(0.1em); }

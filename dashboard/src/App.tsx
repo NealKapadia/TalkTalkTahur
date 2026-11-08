@@ -3,6 +3,8 @@ import type { Alert, Contact, Message } from '@bindings';
 import { DEMO, useBlinkTalk, type Actions, type Link, type Snapshot } from './data';
 import { EyeTrace } from './EyeTrace';
 import { spellCost } from './speller';
+import { splitPhotos } from './photo';
+import { Icon } from './icons';
 
 const ESCALATE_SECONDS = 45;
 
@@ -201,7 +203,15 @@ function Bubble({ m, who, name, now }: { m: Message; who?: Contact; name: string
   return (
     <li className={`msg ${out ? 'out' : 'in'}`}>
       <div className="meta">{out ? `${name} to ${who?.name ?? 'contact'}` : who?.name ?? 'Unknown'} <time>{when}</time>{out && m.status !== 'sent' && <span className={`st st-${m.status}`}>{m.status}</span>}</div>
-      <p>{m.body}</p>
+      {(() => {
+        const { text, photos } = splitPhotos(m.body);
+        return (
+          <>
+            {text && <p>{text}</p>}
+            {photos.map((d, i) => <p key={i} className="photo"><Icon name="image" /> {d ? `Photo, described by Nemotron: ${d}` : 'Photo'}</p>)}
+          </>
+        );
+      })()}
       {m.assisted && <span className="ai-tag">Drafted by Nemotron, sent with one choice</span>}
     </li>
   );

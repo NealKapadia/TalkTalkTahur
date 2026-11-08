@@ -184,7 +184,7 @@ function startDemo(set: (s: Snapshot) => void) {
   const t = PATIENT_VIEW ? 0 : typeOut(800, "I'd like some water");
   at(t + 600, () => { s.patient!.last_spoken = "I'd like some water, please."; s.patient!.draft = ''; s.patient!.status = 'speaking'; msg(0n, 'out', "I'd like some water, please.", { status: 'spoken' }); eye('select'); });
   at(t + 3000, () => {
-    msg(2n, 'in', 'Hey bro, want me to bring dinner after my shift? Pho or tacos?');
+    msg(2n, 'in', 'Hey bro, want me to bring dinner after my shift? Pho or tacos? [Photo: A menu board from a pho shop, with the beef pho circled in red marker.]');
     step('plan', '[b7c2] Text from Alex. Plan: read the conversation and Neal\'s state, check whether caregivers need to know, draft 4 replies.');
     step('tool', '[b7c2] get_conversation({}) -> 1 message');
     step('tool', '[b7c2] get_patient_state({}) -> {"heart_rate_now":73,"favourite_phrases":["I\'d like some water, please.","Thank you."]}');

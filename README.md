@@ -37,7 +37,7 @@ Team: Neal Kapadia, Adrian Miciano, Alexander Montesino
 |---|---|
 | **Spacetime** | The whole backend is one SpacetimeDB module (`spacetime/src/index.ts`): 11 tables, 21 reducers and a scheduled SOS-escalation reducer. It handles validation, pruning, heart-rate alert rules, phrase learning, conversation routing and acknowledgement. The speller, hub and dashboard are thin clients. The dashboard is a pure live subscription, so a new eye movement reaches a caregiver's screen in one round trip. It runs locally (`spacetime start`) for an offline home setup, or on Maincloud for remote family. |
 | **Photon** | Gives the patient a real iMessage line (`hub/src/photon.ts`, Photon 2.0 API). People text them like anyone else, they answer with their eyes, and caregivers get SOS alerts in the chat app they already use. Replying "OK" acknowledges an alert. |
-| **NVIDIA Nemotron** | Not a chatbot: Nemotron is the patient's *keyboard accelerator*, and it never speaks for them. As a tool-calling agent (`hub/src/agent.ts`) it plans, reads the conversation and live state (`get_conversation`, `get_patient_state`, `list_contacts`), decides whether caregivers must know (`alert_caregivers`), and either drafts replies (`propose_replies`) or turns 2–3 eye-picked keywords into messages addressed to the right person (`propose_messages`). The backend marks every message sent from a suggestion, and the dashboard reports the eye movements that saved, measured by simulating what spelling it would have cost on the same keyboard. Every agent step is written to SpacetimeDB and shown live. It runs on build.nvidia.com or fully offline on a local `nemotron-3-nano` through Ollama. It degrades to JSON mode if tools are rejected, and to built-in replies if no model is reachable. |
+| **NVIDIA Nemotron** | Not a chatbot: Nemotron is the patient's *keyboard accelerator*, and it never speaks for them. As a tool-calling agent (`hub/src/agent.ts`) it plans, reads the conversation and live state (`get_conversation`, `get_patient_state`, `list_contacts`), decides whether caregivers must know (`alert_caregivers`), and either drafts replies (`propose_replies`) or turns 2–3 eye-picked keywords into messages addressed to the right person (`propose_messages`). The backend marks every message sent from a suggestion, and the dashboard reports the eye movements that saved, measured by simulating what spelling it would have cost on the same keyboard. When someone texts a photo, Nemotron's vision model describes it for the patient's screen and drafts replies to it. Every agent step is written to SpacetimeDB and shown live. It runs on build.nvidia.com or fully offline on a local `nemotron-3-nano` through Ollama. It degrades to JSON mode if tools are rejected, and to built-in replies if no model is reachable. |
 
 ## Run it (Windows)
 
@@ -123,7 +123,7 @@ Secrets live only in `.env` (gitignored). `npm run check-secrets` scans tracked 
 
 ```bash
 npm test -w spacetime        # 8 reducer tests on SpacetimeDB's in-process datastore
-npm test -w hub              # 12 tests: agent tool loop, recipient routing, outage / JSON fallback, Photon polling + replies
+npm test -w hub              # 15 tests: agent tool loop, recipient routing, photo description, outage / JSON fallback, Photon polling, photos + replies
 npm test -w dashboard        # 7 patient-screen tests: speller, recipient picker, spelling-cost model
 python edge/test_gestures.py # blink gestures: 2 choose, 3 on/off, 5 SOS (board + live stream)
 python speller/test_cloud.py # 5 speller <-> SpacetimeDB HTTP tests
@@ -142,7 +142,8 @@ npm run e2e                  # 19 end-to-end checks against a running server (E2
 | `speller/` | Python board bridge + original Tk speller; `cloud.py` talks to SpacetimeDB |
 | `deploy/` | Container for an always-on hub + public dashboard (Maritime) |
 | `edge/`, `board/` | EOG signal processing, on-board model training, live AFE4950 streaming. See [docs/HARDWARE.md](docs/HARDWARE.md) |
-| `scripts/` | End-to-end test, secret scanner |
+| `scripts/` | End-to-end test, Photon check, secret scanner |
+| `docs/` | `HANDOFF.md` (full context for another coding agent), `PITCH.md` (how to present), `DEVPOST.md`, `HARDWARE.md` |
 
 ## Limits and safety
 

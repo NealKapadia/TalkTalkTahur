@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createPhoton, handleKey } from '../src/photon.ts';
+import { createPhoton, handleKey, readContent } from '../src/photon.ts';
 
 const LINE = { id: 'usr_line', handle: '+14155550000', platform: 'imessage' };
 const inbound = (id: string, from: string, text: string, createdAt = new Date().toISOString()) => ({
@@ -67,4 +67,33 @@ test('ignores non-text and agent-sent items', async () => {
 test('handle normalisation', () => {
   assert.equal(handleKey('+1 (469) 555-0101'), '+14695550101');
   assert.equal(handleKey(' Mom@iCloud.com '), 'mom@icloud.com');
+});
+
+test('reads text, single attachments and text+photo groups', () => {
+  assert.deepEqual(readContent({ type: 'text', text: 'hi' }), { text: 'hi', attachmentIds: [] });
+  assert.deepEqual(readContent({ type: 'attachment', attachmentId: 'att_1' }), { text: '', attachmentIds: ['att_1'] });
+  assert.deepEqual(readContent({ type: 'group', parts: [{ type: 'text', text: 'look!' }, { type: 'attachment', attachmentId: 'att_2' }] }), { text: 'look!', attachmentIds: ['att_2'] });
+  assert.equal(readContent({ type: 'space.typing.update' }), null);
+});
+
+test('photo messages reach the hub with attachment ids; download retries while not ready', async () => {
+  const got: any[] = [];
+  let downloads = 0;
+  const photoMsg = { ...inbound('m9', '+14695550101', ''), content: { type: 'group', parts: [{ type: 'text', text: 'dinner!' }, { type: 'attachment', attachmentId: 'att_9' }] } };
+  const fn = (async (url: string) => {
+    if (url.includes('/attachments/')) {
+      downloads++;
+      if (downloads === 1) return new Response('{}', { status: 409, headers: { 'retry-after': '0' } });
+      return new Response(new Uint8Array([0xff, 0xd8, 0xff]), { status: 200, headers: { 'content-type': 'image/jpeg' } });
+    }
+    return new Response(JSON.stringify({ items: [photoMsg] }), { status: 200 });
+  }) as unknown as typeof fetch;
+  const p = createPhoton({ apiKey: 'k', projectId: 'p', fetchFn: fn, routesFile: null, pollMs: 0, onText: async t => { got.push(t); } });
+  await p.pollOnce();
+  assert.deepEqual(got[0].attachmentIds, ['att_9']);
+  assert.equal(got[0].body, 'dinner!');
+  const img = await p.download('att_9');
+  assert.equal(img.contentType, 'image/jpeg');
+  assert.equal(img.data.length, 3);
+  assert.equal(downloads, 2);
 });

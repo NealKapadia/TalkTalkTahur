@@ -11,6 +11,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { DEMO, useBlinkTalk } from './data';
 import { Speller, type Item } from './speller';
 import { Icon, type IconName } from './icons';
+import { splitPhotos } from './photo';
 import './patient.css';
 
 type Cmd = 'left' | 'right' | 'select' | 'toggle' | 'sos';
@@ -214,7 +215,17 @@ export default function PatientScreen() {
         {inbox ? (
           <>
             <span className="pt-from">{from}</span>
-            <p className="pt-msg">{inbox.body}</p>
+            {(() => {
+              const { text, photos } = splitPhotos(inbox.body);
+              return (
+                <>
+                  {text && <p className="pt-msg">{text}</p>}
+                  {photos.map((d, i) => (
+                    <p key={i} className="pt-photo"><Icon name="image" /> <span>{d ? `Sent a photo: ${d}` : 'Sent a photo'}</span></p>
+                  ))}
+                </>
+              );
+            })()}
           </>
         ) : (
           <p className="pt-msg pt-quiet">{name ? `Hi ${name}.` : 'Hi.'} Messages from your family will appear here.</p>

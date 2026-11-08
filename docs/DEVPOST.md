@@ -13,6 +13,7 @@ Three electrodes on the forehead pick up the eye's electrical signal (EOG). A mo
 - **Speak:** spell or pick phrases; the laptop speaks them aloud.
 - **Text:** BlinkTalk gives the patient an iMessage line through **Photon**. When someone texts, an **NVIDIA Nemotron** agent reads the conversation and the patient's live state, decides whether caregivers need to know, and puts four replies on screen in the patient's voice. One double blink sends a reply.
 - **Say a lot with a little:** spell two keywords ("alex pho") and choose *AI expand*. Nemotron checks the contacts, works out who each message is for, and offers finished messages already addressed ("to Alex: Can you bring pho tonight?"). Or spell your own message, choose *Text it*, and pick the person.
+- **Photos too:** when someone texts a picture, Nemotron's vision model describes it on the patient's screen and suggests replies to it.
 - **Proof it helps:** the dashboard counts the eye movements Nemotron saved. It simulates what spelling each message would have cost on the same keyboard, so every AI-drafted message is measured, not guessed.
 - **Get help:** five blinks text tier-1 caregivers. If nobody answers "OK" within 45 seconds, a scheduled **SpacetimeDB** reducer escalates to the next tier. When someone acknowledges, the patient's screen says help is on the way.
 - **A screen made for eyes:** one choice in focus at the centre of a ribbon, the message being answered on top, the patient's words in large type, and a night palette for long sessions.
@@ -30,7 +31,7 @@ Three electrodes on the forehead pick up the eye's electrical signal (EOG). A mo
 - Shared iMessage lines can only reply to people who texted first, so the hub remembers each caregiver's chat and warns about anyone who hasn't said hi yet.
 
 ## Accomplishments
-A full loop from eye to iMessage to caregiver and back, 54 automated checks (unit tests plus an end-to-end run against a live SpacetimeDB server), and a dashboard a parent could understand at 3am without instructions.
+A full loop from eye to iMessage to caregiver and back, 57 automated checks (unit tests plus an end-to-end run against a live SpacetimeDB server), and a dashboard a parent could understand at 3am without instructions.
 
 ## What we learned
 When the database is the backend, the clients get simple: the speller talks to it through a 140-line HTTP client, and the dashboard has no API layer at all.

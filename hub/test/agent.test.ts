@@ -115,3 +115,16 @@ test('contact matching handles names, relations and nicknames', () => {
   assert.equal(resolveContact('my brother', people), 2n);
   assert.equal(resolveContact('pizza guy', people), undefined);
 });
+
+test('photo: Nemotron vision gets the image as a data URL and returns a short description', async () => {
+  const { describeImage, photoTag } = await import('../src/agent.ts');
+  const { fn, bodies } = scriptedFetch([{ content: '<think>x</think>A steaming bowl of pho with basil and lime.' }]);
+  const d = await describeImage({ data: Buffer.from([1, 2, 3]), contentType: 'image/png' }, 'Alex', 'dinner!', fn);
+  assert.equal(d, 'A steaming bowl of pho with basil and lime.');
+  const parts = bodies[0].messages[0].content;
+  assert.equal(parts[1].type, 'image_url');
+  assert.match(parts[1].image_url.url, /^data:image\/png;base64,AQID$/);
+  assert.match(parts[0].text, /Alex/);
+  assert.equal(photoTag(d), '[Photo: A steaming bowl of pho with basil and lime.]');
+  assert.equal(await describeImage({ data: Buffer.from([1]), contentType: 'application/pdf' }, 'Alex', '', fn), null, 'non-images skipped');
+});
