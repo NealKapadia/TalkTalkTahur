@@ -1,14 +1,15 @@
-/* Patient screen: a night palette for long sessions, one focused choice, big type. */
+/* Patient screen, "lamplight": warm dark, no blue or violet light (kind to the eyes and to sleep),
+   one lit choice at a time, big type. */
 .pt {
-  --bg: #17121e;
-  --surface: #231b2c;
-  --raise: #2e2439;
-  --ink: #f3eef7;
-  --muted: #a79db3;
-  --focus: #a99bff;
-  --focus-ink: #17121e;
-  --sos: #e5533f;
-  --ok: #5cc28a;
+  --bg: #15120f;
+  --surface: #211c17;
+  --raise: #2e2720;
+  --ink: #f3eadb;
+  --muted: #a89a86;
+  --focus: #f6b24a;
+  --focus-ink: #1b1206;
+  --sos: #e8503a;
+  --ok: #8fcb9b;
   --voice: 'Literata', Georgia, serif;
   --ui: 'Atkinson Hyperlegible', system-ui, sans-serif;
   position: fixed; inset: 0;
@@ -19,14 +20,14 @@
   overflow: hidden;
   color-scheme: dark;
 }
-body:has(.pt) { background: #17121e; }
+body:has(.pt) { background: #15120f; }
 
 /* top strip: deliberately small, nothing to read here */
 .pt-top { display: flex; align-items: center; gap: 18px; padding: 18px 40px 0; color: var(--muted); font-size: 18px; }
 .pt-brand { font-weight: 700; color: var(--ink); letter-spacing: 0.02em; }
 .pt-link { margin-left: auto; }
 .pt-link-live::before, .pt-link-demo::before { content: ''; display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--ok); margin-right: 8px; vertical-align: 1px; }
-.pt-link-demo::before { background: var(--focus); }
+.pt-link-demo::before { background: var(--muted); }
 .pt-link-offline { color: #f2a541; }
 .pt-heart { color: var(--muted); font-variant-numeric: tabular-nums; }
 
@@ -54,7 +55,7 @@ body:has(.pt) { background: #17121e; }
 
 /* the ribbon of choices */
 .pt-mode { padding: 0 40px; min-height: 30px; color: var(--muted); font-size: 20px; text-align: center; }
-.pt-ribbon { position: relative; height: 210px; overflow: hidden; }
+.pt-ribbon { position: relative; height: 270px; overflow: hidden; }
 .pt-track {
   list-style: none; margin: 0; padding: 0; height: 100%;
   display: flex; align-items: center; gap: 22px;
@@ -71,7 +72,9 @@ body:has(.pt) { background: #17121e; }
 .pt-tile.focus {
   background: var(--focus); color: var(--focus-ink);
   transform: scale(1.32);
-  box-shadow: 0 0 0 6px color-mix(in srgb, var(--focus) 30%, transparent);
+  /* the one lit lamp in a dark room */
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--focus) 28%, transparent),
+              0 0 56px 6px color-mix(in srgb, var(--focus) 32%, transparent);
   margin: 0 46px;
 }
 .pt-tile.press { animation: pt-press 260ms ease-out; }
@@ -113,7 +116,7 @@ body:has(.pt) { background: #17121e; }
 .pt-sos-cancel { margin-top: 30px !important; opacity: 0.85; font-size: 24px !important; }
 .pt-ack {
   position: absolute; left: 50%; top: 38%; transform: translateX(-50%); z-index: 4;
-  background: var(--ok); color: #0f2a1b; padding: 22px 34px; border-radius: 20px;
+  background: var(--ok); color: #10251a; padding: 22px 34px; border-radius: 20px;
   font: 600 clamp(26px, 3vw, 38px)/1.2 var(--voice); text-align: center;
   animation: pt-in 300ms ease-out;
 }

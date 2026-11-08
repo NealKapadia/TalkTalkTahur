@@ -316,9 +316,10 @@ class Speller:
 
 
 # ---------------------------------------------------------------- GUI
-BG, PANEL, INK, QUIET = "#0F1B24", "#182A36", "#F4F1EA", "#8FA3AE"
-TEAL, AMBER, RED = "#4FB3BF", "#F2A541", "#C0392B"
-VIOLET, GREEN = "#9B8CFF", "#5CC28A"
+# "lamplight": warm dark, no blue or violet light (matches the browser patient screen)
+BG, PANEL, INK, QUIET = "#15120F", "#2E2720", "#F3EADB", "#A89A86"
+TEAL, AMBER, RED = "#F6B24A", "#F6B24A", "#E8503A"     # focus = lamp amber
+VIOLET, GREEN = "#F6B24A", "#8FCB9B"
 
 
 class App:

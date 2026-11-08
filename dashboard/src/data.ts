@@ -159,7 +159,7 @@ function startDemo(set: (s: Snapshot) => void) {
   msg(1n, 'out', 'Yes. Can you come by?');
   msg(0n, 'out', 'Thank you.', { status: 'spoken' });
   const step = (step: string, detail: string) => s.agent.push({ id: nid(), patient: 'neal', run_id: detail.slice(1, 5), step, detail, at: now() });
-  step('plan', '[a1f3] Incoming text from Mom. Plan: read context -> screen for fraud -> draft 4 replies.');
+  step('plan', '[a1f3] Text from Mom. Plan: read the conversation and Neal\'s state, check whether caregivers need to know, draft 4 replies.');
   step('tool', '[a1f3] get_conversation({}) -> 3 messages');
   step('tool', '[a1f3] get_patient_state({}) -> {"heart_rate_now":72,"status":"idle","local_time":"Sunday 1:12 AM"}');
   step('reply', '[a1f3] Yes, I am awake. | Very tired today. | Can you come by? | Call me later.');
