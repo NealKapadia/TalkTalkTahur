@@ -48,11 +48,17 @@ function portsFor(conn: Conn, contactId: bigint, messageId: bigint): AgentPorts 
       const c = contactById(conn, contactId);
       return { name: c?.name ?? 'Unknown sender', relation: c?.relation ?? 'unknown', isCaregiver: (c?.tier ?? 0) > 0 };
     },
+    contacts: () => contactsOf(conn, P).map(c => ({ id: c.id, name: c.name, relation: c.relation })),
     alertCaregivers: async reason => {
       await conn.reducers.raiseSos({ patient: P, detail: `Agent: ${reason}`.slice(0, 280) });
     },
-    propose: async (replies, source) => {
-      await conn.reducers.addSuggestions({ patient: P, message_id: messageId, contact_id: contactId, texts: replies, source });
+    propose: async (replies, source, to) => {
+      if (to && to.length === replies.length) {
+        const ids = to.map(id => (id === 0n ? contactId : id));
+        await conn.reducers.addRoutedSuggestions({ patient: P, message_id: messageId, contact_ids: ids, texts: replies, source });
+      } else {
+        await conn.reducers.addSuggestions({ patient: P, message_id: messageId, contact_id: contactId, texts: replies, source });
+      }
     },
     log: async (step, detail) => {
       console.log(`[agent] ${step}: ${detail}`);

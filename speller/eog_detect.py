@@ -6,7 +6,7 @@ CSV with one column of samples) into BlinkTalk events:
 
     select  = double blink
     toggle  = triple blink (switch BlinkTalk on/off)
-    sos     = four blinks
+    sos     = five blinks
     left    = glance left
     right   = glance right
 
@@ -107,8 +107,8 @@ def detect(x, fs, invert=False, swap_lr=False, blink_k=6.0, glance_k=5.0,
         while j + 1 < len(blink_times) and blink_times[j + 1] - blink_times[j] <= multi_gap:
             j += 1
         n = j - i + 1
-        if n >= 4:
-            events.append((blink_times[i + 3], "sos"))
+        if n >= 5:
+            events.append((blink_times[i + 4], "sos"))
         elif n == 3:
             events.append((blink_times[i + 2], "toggle"))
         elif n == 2:

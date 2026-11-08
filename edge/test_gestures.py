@@ -24,8 +24,9 @@ class Gestures(unittest.TestCase):
         self.assertEqual(self.cmds(1), [])            # natural blink ignored
         self.assertEqual(self.cmds(2), ["select"])
         self.assertEqual(self.cmds(3), ["toggle"])    # on / off
-        self.assertEqual(self.cmds(4), ["sos"])
+        self.assertEqual(self.cmds(4), [])            # unused gap between toggle and SOS
         self.assertEqual(self.cmds(5), ["sos"])
+        self.assertEqual(self.cmds(6), ["sos"])
 
     def test_glances_still_work(self):
         out = F.to_commands([1.0, 1.4, 3.0], ["left", "right", "right"], [1, -1, 1])
@@ -33,7 +34,7 @@ class Gestures(unittest.TestCase):
 
     def test_live_stream_matches(self):
         import blinktalk_live as L
-        for n, want in [(2, "select"), (3, "toggle"), (4, "sos")]:
+        for n, want in [(2, "select"), (3, "toggle"), (5, "sos")]:
             g = L.GestureStream()
             out = []
             for t, p, s in zip(*blinks(n)):

@@ -80,6 +80,20 @@ test('inbound text creates a contact; reply_latest queues an iMessage and clears
   assert.equal([...h.db.phrase.iter()][0].uses, 1);
 });
 
+test('routed suggestions go to the inferred person; sending one is marked AI-assisted', () => {
+  const { h, run } = harness();
+  run(ctx => mod.add_contact(ctx, { patient: 'neal', name: 'Alex', address: '+19725550142', relation: 'brother', tier: 2 }));
+  const alex = [...h.db.contact.iter()][0];
+  run(ctx => mod.add_routed_suggestions(ctx, { patient: 'neal', message_id: 0n, contact_ids: [alex.id, 999n], texts: ['Can you bring pho tonight?', 'Hi'], source: 'nemotron' }));
+  const sugg = [...h.db.suggestion.iter()].sort((a, b) => a.rank - b.rank);
+  assert.equal(sugg[0].contact_id, alex.id);
+  assert.equal(sugg[1].contact_id, 0n, 'unknown contact falls back to 0');
+  run(ctx => mod.send_message(ctx, { patient: 'neal', contact_id: alex.id, body: 'Can you bring pho tonight?' }));
+  run(ctx => mod.send_message(ctx, { patient: 'neal', contact_id: alex.id, body: 'typed myself' }));
+  const out = [...h.db.message.iter()].sort((a, b) => (a.id < b.id ? -1 : 1));
+  assert.deepEqual(out.map(m => m.assisted), [true, false]);
+});
+
 test('sustained high heart rate raises one alert; noisy readings do not', () => {
   const { h, run } = harness();
   for (let i = 0; i < 4; i++) run(ctx => mod.heartbeat(ctx, { patient: 'neal', bpm: 140, quality: 0.2 }));

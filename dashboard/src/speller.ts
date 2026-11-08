@@ -24,19 +24,25 @@ doctor family mom dad home hot cold tired hungry thirsty food drink bathroom bed
 phone call more less now later today tomorrow good bad okay love need like feel sleep medicine blanket pillow window
 door open close stop go come here there time morning night`.split(/\s+/);
 
-export type Kind = 'reply' | 'phrase' | 'word' | 'quick' | 'group' | 'letter' | 'back' | 'space' | 'delete' | 'speak' | 'text' | 'expand';
-export interface Item { kind: Kind; value: string }
-export type Mode = 'main' | 'group' | 'quick';
+export type Kind = 'reply' | 'phrase' | 'word' | 'quick' | 'group' | 'letter' | 'back' | 'space' | 'delete' | 'speak' | 'text' | 'expand' | 'contact';
+/** `to` / `contactId`: who a reply or contact item sends to. */
+export interface Item { kind: Kind; value: string; to?: string; contactId?: string }
+export type Mode = 'main' | 'group' | 'quick' | 'to';
 
 export interface Effects {
   speak(text: string): void;
-  reply(text: string): void;
+  /** Send a text. contactId undefined = reply to whoever wrote last. */
+  send(text: string, contactId?: string): void;
   expand(keywords: string): void;
 }
 
+export interface Reply { text: string; contactId?: string; to?: string }
+export interface Person { id: string; name: string }
+
 export interface Context {
-  replies: string[];          // AI suggestions currently offered
-  canText: boolean;           // someone has texted, so "Text it" makes sense
+  replies: Reply[];           // AI suggestions currently offered (each may name its recipient)
+  contacts: Person[];         // who "Text it" can send to, most relevant first
+  canText: boolean;           // there is someone to text
   usage: Map<string, number>; // phrase -> uses, to rank suggestions
 }
 
@@ -47,7 +53,8 @@ export class Speller {
   idx = 0;
   items: Item[] = [];
   status = '';
-  ctx: Context = { replies: [], canText: false, usage: new Map() };
+  ctx: Context = { replies: [], contacts: [], canText: false, usage: new Map() };
+  pending = '';               // text waiting for a recipient (mode 'to')
 
   constructor(private fx: Effects) {
     this.rebuild();
@@ -73,11 +80,13 @@ export class Speller {
     let items: Item[];
     if (this.mode === 'group') {
       items = [...(this.group ?? '').split('').map(value => ({ kind: 'letter' as const, value })), { kind: 'back', value: 'Back' }];
+    } else if (this.mode === 'to') {
+      items = [...this.ctx.contacts.map(c => ({ kind: 'contact' as const, value: c.name, contactId: c.id })), { kind: 'back', value: 'Back' }];
     } else if (this.mode === 'quick') {
       items = [...QUICK_PHRASES.map(value => ({ kind: 'phrase' as const, value })), { kind: 'back', value: 'Back' }];
     } else {
       items = [
-        ...this.ctx.replies.map(value => ({ kind: 'reply' as const, value })),
+        ...this.ctx.replies.map(r => ({ kind: 'reply' as const, value: r.text, to: r.to, contactId: r.contactId })),
         ...this.suggestions(),
         { kind: 'quick', value: 'Quick phrases' },
         ...GROUPS.map(value => ({ kind: 'group' as const, value })),
@@ -85,7 +94,7 @@ export class Speller {
         { kind: 'delete', value: 'Delete' },
         { kind: 'speak', value: 'Say it' },
       ];
-      if (this.text.trim() && this.ctx.canText) items.push({ kind: 'text', value: 'Text it' });
+      if (this.text.trim() && (this.ctx.canText || this.ctx.contacts.length)) items.push({ kind: 'text', value: 'Text it' });
       if (this.text.trim()) items.push({ kind: 'expand', value: 'AI expand' });
     }
     this.items = items;
@@ -99,7 +108,8 @@ export class Speller {
 
   /** New AI replies / inbox state from the backend. Focus jumps to the first new reply. */
   setContext(ctx: Partial<Context>) {
-    const fresh = !!ctx.replies?.length && ctx.replies.join('\n') !== this.ctx.replies.join('\n');
+    const key = (r: Reply[]) => r.map(x => `${x.contactId}:${x.text}`).join('\n');
+    const fresh = !!ctx.replies?.length && key(ctx.replies) !== key(this.ctx.replies);
     const keep = this.items[this.idx];
     this.ctx = { ...this.ctx, ...ctx };
     this.rebuild();
@@ -125,14 +135,29 @@ export class Speller {
         this.say(value);
         this.text = ''; this.mode = 'main';
         break;
-      case 'reply':
-        this.send(value);
+      case 'reply': {
+        const it = this.items[this.idx];
+        this.send(value, it.contactId, it.to);
         this.ctx = { ...this.ctx, replies: [] };
         break;
-      case 'text':
-        this.send(this.text.trim());
-        this.text = '';
+      }
+      case 'text': {
+        const t = this.text.trim();
+        if (this.ctx.contacts.length > 1) {          // choose who it goes to
+          this.pending = t; this.mode = 'to'; this.idx = 0;
+        } else {
+          const only = this.ctx.contacts[0];
+          this.send(t, only?.id, only?.name);
+          this.text = '';
+        }
         break;
+      }
+      case 'contact': {
+        const it = this.items[this.idx];
+        this.send(this.pending, it.contactId, it.value);
+        this.pending = ''; this.text = ''; this.mode = 'main';
+        break;
+      }
       case 'expand':
         this.fx.expand(this.text.trim());
         this.status = `Asking for sentences with "${this.text.trim()}"…`;
@@ -154,7 +179,7 @@ export class Speller {
         backTo = this.group; this.mode = 'main';
         break;
       case 'back':
-        backTo = this.mode === 'group' ? this.group : null; this.mode = 'main';
+        backTo = this.mode === 'group' ? this.group : null; this.mode = 'main'; this.pending = '';
         break;
       case 'space':
         if (this.text && !this.text.endsWith(' ')) this.text += ' ';
@@ -167,7 +192,7 @@ export class Speller {
         break;
     }
     this.rebuild();
-    if (this.mode === 'main' && ['letter', 'back', 'phrase', 'word', 'reply', 'text', 'expand', 'speak'].includes(kind)) {
+    if (this.mode === 'main' && ['letter', 'back', 'phrase', 'word', 'reply', 'text', 'contact', 'expand', 'speak'].includes(kind)) {
       if (kind === 'letter' && this.suggestions().length) this.idx = this.ctx.replies.length;   // first suggestion
       else if (backTo) this.idx = this.indexOf('group', backTo);
       else this.idx = this.indexOf('group', GROUPS[0]);
@@ -179,9 +204,37 @@ export class Speller {
     this.status = `Said: “${text}”`;
   }
 
-  private send(text: string) {
+  private send(text: string, contactId?: string, to?: string) {
     if (!text) return;
-    this.fx.reply(text);
-    this.status = `Texted: “${text}”`;
+    this.fx.send(text, contactId);
+    this.status = to ? `Texted ${to}: “${text}”` : `Texted: “${text}”`;
   }
+}
+
+/**
+ * Eye movements needed to spell `text` letter by letter on this speller (glances +
+ * double blinks), simulated on a fresh speller with no suggestions. Used to show
+ * how many movements an AI-drafted message saved.
+ */
+export function spellCost(text: string): number {
+  const sp = new Speller({ speak() {}, send() {}, expand() {} });
+  const dist = (from: number, to: number, n: number) => Math.min((to - from + n) % n, (from - to + n) % n);
+  let moves = 0;
+  for (const ch of text.toUpperCase()) {
+    if (ch === ' ') {
+      const i = sp.items.findIndex(it => it.kind === 'space');
+      moves += dist(sp.idx, i, sp.items.length) + 1; sp.idx = i; sp.select();
+      continue;
+    }
+    const g = GROUPS.find(gr => gr.includes(ch));
+    if (!g) continue;                                   // punctuation is free on this keyboard
+    const gi = sp.items.findIndex(it => it.kind === 'group' && it.value === g);
+    moves += dist(sp.idx, gi, sp.items.length) + 1; sp.idx = gi; sp.select();
+    const li = sp.items.findIndex(it => it.kind === 'letter' && it.value === ch);
+    moves += dist(sp.idx, li, sp.items.length) + 1; sp.idx = li; sp.select();
+    sp.ctx.usage = new Map(); sp.rebuild();
+    const back = sp.items.findIndex(it => it.kind === 'group' && it.value === g);
+    if (back >= 0) sp.idx = back;
+  }
+  return moves;
 }

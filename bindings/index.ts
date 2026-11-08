@@ -58,6 +58,7 @@ const MessageRow = __t.row({
   channel: __t.string(),
   body: __t.string(),
   status: __t.string(),
+  assisted: __t.bool(),
   created_at: __t.timestamp(),
 });
 const SuggestionRow = __t.row({
@@ -157,6 +158,7 @@ const reducersSchema = __reducers(
   __reducerSchema('receive_message', { patient: __t.string(), address: __t.string(), sender_name: __t.string(), channel: __t.string(), body: __t.string() }),
   __reducerSchema('mark_message', { id: __t.u64(), status: __t.string() }),
   __reducerSchema('add_suggestions', { patient: __t.string(), message_id: __t.u64(), contact_id: __t.u64(), texts: __t.array(__t.string()), source: __t.string() }),
+  __reducerSchema('add_routed_suggestions', { patient: __t.string(), message_id: __t.u64(), contact_ids: __t.array(__t.u64()), texts: __t.array(__t.string()), source: __t.string() }),
   __reducerSchema('request_intent', { patient: __t.string(), keywords: __t.string() }),
   __reducerSchema('finish_intent', { id: __t.u64() }),
   __reducerSchema('log_agent_step', { patient: __t.string(), run_id: __t.string(), step: __t.string(), detail: __t.string() }),

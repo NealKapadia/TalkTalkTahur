@@ -7,7 +7,7 @@ AFE4950EVM (ECG channel, 500 Hz) -> CSV export
   -> 14 features per movement (edge shape, levels, extremes, noise)
   -> StandardScaler + RandomForest: blink / left / right / none      (on SK-AM62B)
   -> gesture rule: opposite glance within 1.5 s = return to centre
-  -> commands: left, right, 2 blinks = select, 3 blinks = on/off, 4 blinks = SOS
+  -> commands: left, right, 2 blinks = select, 3 blinks = on/off, 5 blinks = SOS
 ```
 
 Each user gets a **personal model trained on the board** from a short calibration
@@ -101,12 +101,12 @@ Research EVM, not a medical device: get supervisor approval before connecting el
 Copy their 4 CSV files into `edge/data/` on the board, then:
 ```
 cd /root/edge
-python3 calibrate.py --user adrian --blink data/adrian_blink.csv --left data/adrian_left.csv \
-    --right data/adrian_right.csv --rest data/adrian_rest.csv
-python3 edge_infer.py --model models/adrian.joblib --raw data/adrian_blink.csv
+python3 calibrate.py --user alex --blink data/alex_blink.csv --left data/alex_left.csv \
+    --right data/alex_right.csv --rest data/alex_rest.csv
+python3 edge_infer.py --model models/alex.joblib --raw data/alex_blink.csv
 ```
 `calibrate.py` prints held-out accuracy, F1, confusion matrix, training time, latency and
-memory, and saves `models/adrian.joblib` plus `models/adrian_calibration.json`.
+memory, and saves `models/alex.joblib` plus `models/alex_calibration.json`.
 
 ## Shared model (laptop)
 
@@ -137,7 +137,7 @@ The bottom bar controls the board over the serial console (no network):
   recall below 50%, adds the recordings to the default model, and then asks for the person's **name**.
 - **Recalibrate**: the same for the selected person.
 
-Glance = move the highlight, 2 blinks = select, 3 blinks = switch on/off, 4 blinks = SOS.
+Glance = move the highlight, 2 blinks = select, 3 blinks = switch on/off, 5 blinks = SOS.
 
 Board side, also usable in PuTTY: `python3 calib_session.py --user alex`, `--list-users`, `--build-default`,
 `--rename person2 alex`.

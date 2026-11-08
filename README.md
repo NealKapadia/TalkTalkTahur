@@ -1,6 +1,6 @@
 # Blink Blink Blink Tahur
 
-**BlinkTalk: talk, text and call for help with your eyes.** Two blinks to choose, three to switch it on or off, four to call for help.
+**BlinkTalk: talk, text and call for help with your eyes.** Two blinks to choose, three to switch it on or off, five to call for help.
 
 People with ALS, locked-in syndrome or a severe stroke often understand everything and can say nothing. BlinkTalk reads eye movements from three electrodes on the forehead and turns glances and blinks into speech, iMessages and SOS alerts. Family can see what their person is saying, live, from anywhere.
 
@@ -20,15 +20,16 @@ Team: Neal Kapadia, Adrian Miciano, Alexander Montesino
 
 ## What it does
 
-1. **The patient glances and blinks.** The board classifies each eye movement on-device. Left/right moves the highlight, two blinks select, three blinks switch BlinkTalk on or off (so the patient can rest their eyes without typing) and four blinks are SOS.
+1. **The patient glances and blinks.** The board classifies each eye movement on-device. Left/right moves the highlight, two blinks select, three blinks switch BlinkTalk on or off (so the patient can rest their eyes without typing) and five blinks are SOS.
 2. **Every letter is live.** The speller streams the patient's draft, eye movements and heart rate (PPG) into SpacetimeDB. The caregiver dashboard shows the words appearing as they're chosen.
 3. **Someone texts the patient.** Photon delivers the iMessage into SpacetimeDB, and the **Nemotron agent** starts a run:
    - reads the conversation and the patient's live state (heart rate, time, favourite phrases)
    - decides whether caregivers need to know
    - puts four replies, written in the patient's voice, on their screen
 
-   One double blink sends a reply back over iMessage. The patient can also spell a few keywords ("water later") and pick **AI expand** to get full sentences.
-4. **The patient blinks four times.** SpacetimeDB raises an SOS and Photon texts tier-1 caregivers. If nobody replies "OK" within 45 s, a **scheduled reducer** escalates to tier 2, then tier 3. When someone replies "OK" (or taps *I'm on it* on the dashboard), the patient's screen says help is coming.
+   One double blink sends a reply back over iMessage. The patient can also spell a few keywords ("alex pho") and pick **AI expand**: Nemotron works out who each message is for and offers ready-to-send messages already addressed to them ("to Alex: Can you bring pho tonight?").
+   To text anyone directly, the patient spells a message, picks **Text it**, and chooses the person from a ribbon of contacts (whoever wrote last first, then the care circle).
+4. **The patient blinks five times.** SpacetimeDB raises an SOS and Photon texts tier-1 caregivers. If nobody replies "OK" within 45 s, a **scheduled reducer** escalates to tier 2, then tier 3. When someone replies "OK" (or taps *I'm on it* on the dashboard), the patient's screen says help is coming.
 
 ## How each sponsor's tech is used
 
@@ -36,7 +37,7 @@ Team: Neal Kapadia, Adrian Miciano, Alexander Montesino
 |---|---|
 | **Spacetime** | The whole backend is one SpacetimeDB module (`spacetime/src/index.ts`): 11 tables, 21 reducers and a scheduled SOS-escalation reducer. It handles validation, pruning, heart-rate alert rules, phrase learning, conversation routing and acknowledgement. The speller, hub and dashboard are thin clients. The dashboard is a pure live subscription, so a new eye movement reaches a caregiver's screen in one round trip. It runs locally (`spacetime start`) for an offline home setup, or on Maincloud for remote family. |
 | **Photon** | Gives the patient a real iMessage line (`hub/src/photon.ts`, Photon 2.0 API). People text them like anyone else, they answer with their eyes, and caregivers get SOS alerts in the chat app they already use. Replying "OK" acknowledges an alert. |
-| **NVIDIA Nemotron** | Not a chatbot: a tool-calling agent (`hub/src/agent.ts`). It plans, calls `get_conversation`, `get_patient_state` and `alert_caregivers`, then `propose_replies`. Every step is written to SpacetimeDB and shown on the dashboard. It runs on build.nvidia.com or fully offline on a local `nemotron-3-nano` through Ollama. It degrades to JSON mode if tools are rejected, and to built-in replies if no model is reachable. |
+| **NVIDIA Nemotron** | Not a chatbot: Nemotron is the patient's *keyboard accelerator*, and it never speaks for them. As a tool-calling agent (`hub/src/agent.ts`) it plans, reads the conversation and live state (`get_conversation`, `get_patient_state`, `list_contacts`), decides whether caregivers must know (`alert_caregivers`), and either drafts replies (`propose_replies`) or turns 2–3 eye-picked keywords into messages addressed to the right person (`propose_messages`). The backend marks every message sent from a suggestion, and the dashboard reports the eye movements that saved, measured by simulating what spelling it would have cost on the same keyboard. Every agent step is written to SpacetimeDB and shown live. It runs on build.nvidia.com or fully offline on a local `nemotron-3-nano` through Ollama. It degrades to JSON mode if tools are rejected, and to built-in replies if no model is reachable. |
 
 ## Run it (Windows)
 
@@ -121,9 +122,10 @@ Secrets live only in `.env` (gitignored). `npm run check-secrets` scans tracked 
 ## Tests
 
 ```bash
-npm test -w spacetime        # 6 reducer tests on SpacetimeDB's in-process datastore
-npm test -w hub              # 10 tests: agent tool loop / outage / JSON fallback, Photon polling + replies
-npm test -w dashboard        # 4 patient-screen speller logic tests
+npm test -w spacetime        # 8 reducer tests on SpacetimeDB's in-process datastore
+npm test -w hub              # 12 tests: agent tool loop, recipient routing, outage / JSON fallback, Photon polling + replies
+npm test -w dashboard        # 7 patient-screen tests: speller, recipient picker, spelling-cost model
+python edge/test_gestures.py # blink gestures: 2 choose, 3 on/off, 5 SOS (board + live stream)
 python speller/test_cloud.py # 5 speller <-> SpacetimeDB HTTP tests
 npm run e2e                  # 19 end-to-end checks against a running server (E2E_ESCALATION=1 adds the 45 s escalation)
 ```

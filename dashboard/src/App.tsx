@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import type { Alert, Contact, Message } from '@bindings';
 import { DEMO, useBlinkTalk, type Actions, type Link, type Snapshot } from './data';
+import { EyeTrace } from './EyeTrace';
+import { spellCost } from './speller';
 
 const ESCALATE_SECONDS = 45;
 
@@ -154,12 +156,10 @@ function SosBand({ alert, snap, name, now, actions }: { alert: Alert; snap: Snap
 }
 
 // ------------------------------------------------------------------ the voice (hero)
-const GLYPH: Record<string, string> = { left: '←', right: '→', select: '●', toggle: '⏻', sos: '!' };
 function Voice({ snap, name, now }: { snap: Snapshot; name: string; now: number }) {
   const p = snap.patient;
   const draft = p?.draft ?? '';
-  const eyes = snap.eyes.slice(-28);
-  const lastEye = eyes.at(-1);
+  const lastEye = snap.eyes.at(-1);
   const idle = !lastEye || now - toDate(lastEye.at).getTime() > 20000;
   return (
     <section className="voice" aria-live="polite">
@@ -170,14 +170,8 @@ function Voice({ snap, name, now }: { snap: Snapshot; name: string; now: number 
           {p?.last_spoken ? <>“{p.last_spoken}”</> : `When ${name} spells with their eyes, the words appear here as they're chosen.`}
         </p>
       )}
-      <div className="trail" aria-label="Recent eye movements">
-        {eyes.map((e, i) => (
-          <span key={String(e.id)} className={`g g-${e.command}`} style={{ opacity: 0.25 + (0.75 * (i + 1)) / eyes.length }}>
-            {GLYPH[e.command] ?? '·'}
-          </span>
-        ))}
-        <span className="trail-label">{idle ? (lastEye ? `eyes last moved ${ago(toDate(lastEye.at), now)}` : 'no eye movements yet') : 'eye movements, newest on the right'}</span>
-      </div>
+      <EyeTrace events={snap.eyes} />
+      <p className="trail-label">{idle ? (lastEye ? `Eyes last moved ${ago(toDate(lastEye.at), now)}.` : 'No eye movements yet.') : 'Live eye trace: glances step, blinks spike.'}</p>
     </section>
   );
 }
@@ -208,6 +202,7 @@ function Bubble({ m, who, name, now }: { m: Message; who?: Contact; name: string
     <li className={`msg ${out ? 'out' : 'in'}`}>
       <div className="meta">{out ? `${name} to ${who?.name ?? 'contact'}` : who?.name ?? 'Unknown'} <time>{when}</time>{out && m.status !== 'sent' && <span className={`st st-${m.status}`}>{m.status}</span>}</div>
       <p>{m.body}</p>
+      {m.assisted && <span className="ai-tag">Drafted by Nemotron, sent with one choice</span>}
     </li>
   );
 }
@@ -264,6 +259,7 @@ function AgentTrace({ snap }: { snap: Snapshot }) {
   return (
     <section className="panel agent">
       <h3>What the agent did</h3>
+      <Saved snap={snap} />
       {runs.length === 0 && <p className="muted">Each incoming text starts a Nemotron run: it reads the conversation and how Neal is doing, decides whether caregivers need to know, then drafts replies. The steps appear here.</p>}
       {runs.map((steps, i) => (
         <ol key={steps[0].run_id} className={`run ${i ? 'old' : ''}`}>
@@ -331,5 +327,18 @@ function CareCircle({ snap, actions }: { snap: Snapshot; actions: Actions }) {
       </form>
       {DEMO && <p className="hint">Demo mode: changes stay in this browser tab.</p>}
     </section>
+  );
+}
+
+function Saved({ snap }: { snap: Snapshot }) {
+  const assisted = snap.messages.filter(m => m.direction === 'out' && m.assisted);
+  if (!assisted.length) return null;
+  const saved = assisted.reduce((sum, m) => sum + Math.max(0, spellCost(m.body) - 3), 0);
+  const name = snap.patient?.display_name ?? 'The patient';
+  return (
+    <p className="saved">
+      {name} sent {assisted.length} {assisted.length === 1 ? 'message' : 'messages'} Nemotron drafted, instead of spelling them:
+      about <strong>{saved.toLocaleString()} fewer eye movements</strong>, roughly {Math.max(1, Math.round(saved * 1.2 / 60))} {Math.round(saved * 1.2 / 60) === 1 ? 'minute' : 'minutes'} of glancing and blinking.
+    </p>
   );
 }

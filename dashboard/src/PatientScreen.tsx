@@ -1,16 +1,16 @@
 /**
  * The patient's screen. Built for someone who moves one step at a time with
- * their eyes and may look at it for hours: a night palette, one choice in
- * focus at the centre of a ribbon, the message they're answering on top, and
- * their own words in large reading type.
+ * their eyes and may look at it for hours: a warm, blue-free palette, one lit
+ * choice at the centre of an endless ribbon, the message they're answering on
+ * top, and their own words in large reading type.
  *
- * Input: the patient's eye movements arrive as eye_event rows (from the board
- * via the bridge) and are applied in order; the keyboard (arrows, Space, S)
- * goes through the same path. Offline it applies keys directly.
+ * Input: eye movements arrive as eye_event rows (board -> bridge -> SpacetimeDB)
+ * and are applied in order; the keyboard (arrows, Space, P, S) takes the same path.
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { DEMO, useBlinkTalk } from './data';
 import { Speller, type Item } from './speller';
+import { Icon, type IconName } from './icons';
 import './patient.css';
 
 type Cmd = 'left' | 'right' | 'select' | 'toggle' | 'sos';
@@ -36,14 +36,16 @@ function beep(times = 3) {
   } catch { /* audio blocked until first interaction */ }
 }
 
-const ICON: Partial<Record<Item['kind'], string>> = {
-  space: '␣', delete: '⌫', speak: '🔊', text: '💬', expand: '✨', quick: '★', back: '↩',
+const ICON_FOR: Partial<Record<Item['kind'], IconName>> = {
+  space: 'space', delete: 'delete', speak: 'speak', text: 'send', expand: 'sparkle', quick: 'star', back: 'back', contact: 'person',
 };
+
+const COPIES = 3;                 // the ribbon is drawn three times so it can scroll forever
 
 export default function PatientScreen() {
   const { snap, link, actions } = useBlinkTalk();
   const [, force] = useState(0);
-  const rerender = () => force(n => n + 1);
+  const rerender = () => force(x => x + 1);
   const [pulse, setPulse] = useState<{ side: Cmd; n: number } | null>(null);
   const [localSos, setLocalSos] = useState(false);
   const [localPause, setLocalPause] = useState(false);
@@ -55,7 +57,7 @@ export default function PatientScreen() {
   if (!sp.current) {
     sp.current = new Speller({
       speak: text => { tts(text); actionsRef.current.speak(text); },
-      reply: text => actionsRef.current.replyLatest(text),
+      send: (text, contactId) => (contactId ? actionsRef.current.sendAsPatient(BigInt(contactId), text) : actionsRef.current.replyLatest(text)),
       expand: keywords => actionsRef.current.requestIntent(keywords),
     });
   }
@@ -72,17 +74,31 @@ export default function PatientScreen() {
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
 
-  // Backend context -> speller (AI replies, whether texting is possible, phrase ranking).
+  // Who "Text it" can reach: whoever wrote last first, then the care circle by tier, then everyone else.
+  const people = useMemo(() => {
+    const byId = new Map(snap.contacts.map(c => [c.id, c]));
+    const order: bigint[] = [];
+    for (const m of [...snap.messages].reverse()) if (m.direction === 'in' && byId.has(m.contact_id) && !order.includes(m.contact_id)) order.push(m.contact_id);
+    for (const c of [...snap.contacts].sort((a, b) => (a.tier || 9) - (b.tier || 9))) if (!order.includes(c.id)) order.push(c.id);
+    return order.map(id => ({ id: String(id), name: byId.get(id)!.name }));
+  }, [snap.contacts, snap.messages]);
+
+  // Backend context -> speller.
   useEffect(() => {
+    const nameOf = (id: bigint) => snap.contacts.find(c => c.id === id)?.name;
     s.setContext({
-      replies: snap.suggestions.map(x => x.text),
-      canText: !!inbox,
+      replies: snap.suggestions.map(x => ({ text: x.text, contactId: x.contact_id ? String(x.contact_id) : undefined, to: x.contact_id ? nameOf(x.contact_id) : undefined })),
+      contacts: people,
+      canText: !!inbox || people.length > 0,
       usage: new Map(snap.phrases.map(p => [p.text, p.uses])),
     });
     rerender();
-  }, [snap.suggestions, snap.phrases, inbox?.id]);
+  }, [snap.suggestions, snap.phrases, people, inbox?.id]);
 
-  // Apply one command.
+  // Ribbon position: an unbounded index into the tripled list, so moving past the end keeps going.
+  const v = useRef(s.idx + s.items.length);
+  const animate = useRef(true);
+
   const apply = (cmd: Cmd) => {
     setPulse(p => ({ side: cmd, n: (p?.n ?? 0) + 1 }));
     if (cmd === 'sos') {
@@ -100,8 +116,8 @@ export default function PatientScreen() {
       return;
     }
     if (pausedRef.current) return;   // resting: only toggle and SOS act
-    if (cmd === 'left') s.move(-1);
-    else if (cmd === 'right') s.move(1);
+    if (cmd === 'left') { s.move(-1); v.current -= 1; }
+    else if (cmd === 'right') { s.move(1); v.current += 1; }
     else s.select();
     if (s.text !== lastDraft.current) {
       lastDraft.current = s.text;
@@ -112,7 +128,7 @@ export default function PatientScreen() {
   const applyRef = useRef(apply);
   applyRef.current = apply;
 
-  // Eye events from the backend (board -> bridge -> SpacetimeDB), in order, new ones only.
+  // Eye events from the backend, in order, new ones only.
   const seen = useRef<bigint | null>(null);
   useEffect(() => {
     if (!snap.patient) return;
@@ -140,7 +156,7 @@ export default function PatientScreen() {
   // A caregiver acknowledged: tell the patient help is coming.
   const lastAck = useRef<bigint | null>(null);
   useEffect(() => {
-    if (!snap.patient) return;                      // wait for the first full snapshot
+    if (!snap.patient) return;
     const acked = snap.alerts.filter(a => a.acked_by && !a.acked_by.startsWith('patient'));
     const latest = acked.at(-1);
     if (lastAck.current === null) { lastAck.current = latest?.id ?? 0n; return; }
@@ -153,29 +169,45 @@ export default function PatientScreen() {
     }
   }, [snap.alerts, snap.patient]);
 
-  // Keep the focused choice centred.
+  // Keep the lit choice centred; after wrapping into an outer copy, jump back to the middle copy unseen.
+  const n = s.items.length;
   const ribbon = useRef<HTMLDivElement>(null);
   const track = useRef<HTMLOListElement>(null);
+  const lastLen = useRef(n);
+  if (n !== lastLen.current || v.current < 0 || v.current >= COPIES * n || ((v.current % n) + n) % n !== s.idx) {
+    v.current = n + s.idx; animate.current = false;      // the list changed or the speller jumped (select, new mode)
+  }
+  lastLen.current = n;
   useLayoutEffect(() => {
     const r = ribbon.current, tr = track.current;
-    const el = tr?.children[s.idx] as HTMLElement | undefined;
+    const el = tr?.children[v.current] as HTMLElement | undefined;
     if (!r || !tr || !el) return;
-    const x = r.clientWidth / 2 - (el.offsetLeft + el.offsetWidth / 2);
-    tr.style.transform = `translateX(${x}px)`;
+    tr.style.transition = animate.current ? '' : 'none';
+    tr.style.transform = `translateX(${r.clientWidth / 2 - (el.offsetLeft + el.offsetWidth / 2)}px)`;
+    if (!animate.current) { void tr.offsetWidth; tr.style.transition = ''; animate.current = true; }
+    if (v.current < n || v.current >= 2 * n) {
+      const t = setTimeout(() => { v.current = n + s.idx; animate.current = false; rerender(); }, 280);
+      return () => clearTimeout(t);
+    }
   });
 
-  const focusKind = s.items[s.idx]?.kind;
-  const modeLabel = s.mode === 'group' ? `Letters ${s.group?.[0]} to ${s.group?.at(-1)}` : s.mode === 'quick' ? 'Quick phrases'
-    : focusKind === 'reply' ? `Reply to ${from || 'them'}` : focusKind === 'expand' ? 'Turn your words into full sentences' : focusKind === 'text' ? `Send to ${from || 'them'}` : '';
+  const focusItem = s.items[s.idx];
+  const modeLabel = s.mode === 'group' ? `Letters ${s.group?.[0]} to ${s.group?.at(-1)}`
+    : s.mode === 'quick' ? 'Quick phrases'
+    : s.mode === 'to' ? 'Who should get this?'
+    : focusItem?.kind === 'reply' ? (focusItem.to ? `Send to ${focusItem.to}` : `Reply to ${from || 'them'}`)
+    : focusItem?.kind === 'expand' ? 'Turn your words into full messages'
+    : focusItem?.kind === 'text' ? 'Choose who to send it to' : '';
   const ladder = snap.contacts.filter(c => c.tier > 0).sort((a, b) => a.tier - b.tier);
   const openSos = [...snap.alerts].reverse().find(a => a.kind === 'sos' && !a.acked_by);
+  const tiles = Array.from({ length: COPIES }, () => s.items).flat();
 
   return (
     <div className="pt">
       <header className="pt-top">
-        <span className="pt-brand">BlinkTalk</span>
+        <span className="pt-brand"><Icon name="eye" /> BlinkTalk</span>
         <span className={`pt-link pt-link-${link}`}>{link === 'live' ? 'Connected' : link === 'demo' ? 'Demo' : link === 'connecting' ? 'Connecting…' : 'Offline: keyboard only'}</span>
-        {snap.patient?.heart_bpm ? <span className="pt-heart">♥ {snap.patient.heart_bpm}</span> : null}
+        {snap.patient?.heart_bpm ? <span className="pt-heart"><Icon name="heart" /> {snap.patient.heart_bpm}</span> : null}
       </header>
 
       <section className="pt-inbox" aria-live="polite">
@@ -190,57 +222,64 @@ export default function PatientScreen() {
       </section>
 
       <section className="pt-compose">
-        <p className={`pt-text ${s.text ? '' : 'pt-empty'}`}>
-          {s.text || 'Look left or right to move. Double blink to choose.'}
-          {s.text && <span className="pt-caret" aria-hidden />}
+        <p className={`pt-text ${s.text || s.pending ? '' : 'pt-empty'}`}>
+          {s.pending || s.text || 'Look left or right to move. Blink twice to choose.'}
+          {s.text && !s.pending && <span className="pt-caret" aria-hidden />}
         </p>
         <p className="pt-status" aria-live="polite">{s.status}</p>
       </section>
 
       <div className="pt-mode">{modeLabel}</div>
       <div className="pt-ribbon" ref={ribbon}>
-        <span key={`l${pulse?.n}`} className={`pt-cue pt-cue-l ${pulse?.side === 'left' ? 'on' : ''}`} aria-hidden>‹</span>
+        <span key={`l${pulse?.n}`} className={`pt-cue pt-cue-l ${pulse?.side === 'left' ? 'on' : ''}`} aria-hidden><Icon name="chevron-left" /></span>
         <ol className="pt-track" ref={track}>
-          {s.items.map((it, i) => {
-            const d = Math.abs(i - s.idx);
+          {tiles.map((it, i) => {
+            const d = Math.abs(i - v.current);
+            const on = i === v.current;
             return (
               <li
-                key={`${s.mode}-${it.kind}-${it.value}-${i}`}
-                className={`pt-tile k-${it.kind} ${i === s.idx ? 'focus' : ''} ${i === s.idx && pulse?.side === 'select' ? 'press' : ''}`}
-                style={{ opacity: i === s.idx ? 1 : Math.max(0.18, 0.75 - d * 0.14) }}
-                aria-current={i === s.idx ? 'true' : undefined}
+                key={`${s.mode}-${i}`}
+                className={`pt-tile k-${it.kind} ${on ? 'focus' : ''} ${on && pulse?.side === 'select' ? 'press' : ''}`}
+                style={{ opacity: on ? 1 : Math.max(0.16, 0.8 - d * 0.15) }}
+                aria-current={on ? 'true' : undefined}
+                aria-hidden={on ? undefined : true}
               >
-                {ICON[it.kind] && <span className="pt-ico" aria-hidden>{ICON[it.kind]}</span>}
+                {ICON_FOR[it.kind] && <Icon name={ICON_FOR[it.kind]!} />}
                 <span className="pt-label">{it.kind === 'group' ? it.value.split('').join(' ') : it.value}</span>
+                {it.kind === 'reply' && it.to && <span className="pt-to">to {it.to}</span>}
               </li>
             );
           })}
         </ol>
-        <span key={`r${pulse?.n}`} className={`pt-cue pt-cue-r ${pulse?.side === 'right' ? 'on' : ''}`} aria-hidden>›</span>
+        <span key={`r${pulse?.n}`} className={`pt-cue pt-cue-r ${pulse?.side === 'right' ? 'on' : ''}`} aria-hidden><Icon name="chevron-right" /></span>
       </div>
 
       <footer className="pt-legend">
-        <span><b>‹ ›</b> look to move</span>
-        <span><b>● ●</b> double blink to choose</span>
-        <span><b>● ● ●</b> three blinks: on / off</span>
-        <span><b>● ● ● ●</b> four blinks for help</span>
+        <span><Icon name="arrows" /> look to move</span>
+        <span><Dots n={2} /> choose</span>
+        <span><Dots n={3} /> on / off</span>
+        <span><Dots n={5} /> call for help</span>
       </footer>
 
       {sosOn && (
         <div className="pt-sos" role="alert">
           <h1>Getting you help</h1>
           <p>{ladder.length ? `Texting ${ladder.filter(c => !openSos || c.tier <= openSos.level).map(c => c.name).join(', ') || ladder[0].name}.` : 'Alerting your caregivers.'} {ladder.length > 1 ? 'If nobody answers, BlinkTalk tries the next person.' : ''}</p>
-          <p className="pt-sos-cancel">Double blink to cancel</p>
+          <p className="pt-sos-cancel">Blink twice to cancel</p>
         </div>
       )}
       {paused && (
         <div className="pt-paused" role="status">
           <h1>Resting</h1>
           <p>BlinkTalk is ignoring your eyes so you can look around freely.</p>
-          <p className="pt-paused-how"><b>● ● ●</b> Three blinks to switch it back on. Four blinks still calls for help.</p>
+          <p className="pt-paused-how"><Dots n={3} /> Blink three times to switch it back on. Five blinks still call for help.</p>
         </div>
       )}
       {ackNote && !sosOn && <div className="pt-ack" role="status">{ackNote}</div>}
     </div>
   );
+}
+
+function Dots({ n }: { n: number }) {
+  return <span className="pt-dots" role="img" aria-label={`${n} blinks`}>{Array.from({ length: n }, (_, i) => <i key={i} />)}</span>;
 }

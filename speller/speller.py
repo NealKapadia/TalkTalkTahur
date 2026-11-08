@@ -5,7 +5,7 @@ Keyboard stands in for the eyes until the live signal is connected:
     Left / Right arrow   glance left / right (move the highlight)
     Space or Enter       double blink (select)
     P                    triple blink (switch BlinkTalk on/off)
-    S                    four blinks (SOS alert)
+    S                    five blinks (SOS alert)
     A                    toggle auto-scan (blink-only mode)
     Esc                  quit
 
@@ -369,7 +369,7 @@ class App:
         self.hr_lbl = tk.Label(root, font=("Segoe UI", 18, "bold"), fg=AMBER, bg=BG)
         self.hr_lbl.place(relx=1.0, x=-40, y=32, anchor="ne")
         tk.Label(root, text="Left/Right = glance   Space = 2 blinks   P = 3 blinks (on/off)   "
-                            "S = 4 blinks (SOS)   A = auto-scan   Esc = quit",
+                            "S = 5 blinks (SOS)   A = auto-scan   Esc = quit",
                  font=("Segoe UI", 12), fg=QUIET, bg=BG).pack(side="bottom", pady=12)
 
         self.sos = tk.Label(root, text="SOS\nCaregiver alert\n\n(double blink to clear)",

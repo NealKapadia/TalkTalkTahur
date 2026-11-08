@@ -66,6 +66,7 @@ const message = table(
     channel: t.string(),               // imessage | sms | speech
     body: t.string(),
     status: t.string(),                // queued | sent | failed | received | spoken
+    assisted: t.bool(),                // the patient sent an AI suggestion (counts toward glances saved)
     created_at: t.timestamp(),
   }
 );
@@ -231,6 +232,11 @@ function countPhrase(ctx: Ctx, handle: string, text: string) {
   ctx.db.phrase.insert({ id: 0n, patient: handle, text, uses: 1, last_used: ctx.timestamp });
 }
 
+function isSuggestion(ctx: Ctx, handle: string, text: string) {
+  for (const s of ctx.db.suggestion.patient.filter(handle)) if (s.text === text) return true;
+  return false;
+}
+
 function clearSuggestions(ctx: Ctx, handle: string) {
   for (const s of [...ctx.db.suggestion.patient.filter(handle)]) ctx.db.suggestion.id.delete(s.id);
 }
@@ -295,7 +301,7 @@ export const eye_command = spacetimedb.reducer(
     ctx.db.eye_event.insert({ id: 0n, patient: handle, command, at: ctx.timestamp });
     prune(ctx.db.eye_event.iter(), handle, KEEP_EYE_EVENTS, r => ctx.db.eye_event.id.delete(r.id));
     if (command === 'sos') {
-      raiseAlert(ctx, handle, 'sos', 'Four blinks on the speller');
+      raiseAlert(ctx, handle, 'sos', 'Five blinks on the speller');
       touch(ctx, handle, { status: 'sos' });
     } else if (command === 'toggle') {
       const p = getPatient(ctx, handle);
@@ -342,7 +348,7 @@ export const speak = spacetimedb.reducer(
     getPatient(ctx, handle);
     ctx.db.message.insert({
       id: 0n, patient: handle, contact_id: 0n, direction: 'out', channel: 'speech', body,
-      status: 'spoken', created_at: ctx.timestamp,
+      status: 'spoken', assisted: isSuggestion(ctx, handle, body), created_at: ctx.timestamp,
     });
     countPhrase(ctx, handle, body);
     touch(ctx, handle, { last_spoken: body, draft: '', status: 'speaking' });
@@ -359,7 +365,7 @@ export const send_message = spacetimedb.reducer(
     if (!c || c.patient !== handle) throw new SenderError('unknown contact');
     ctx.db.message.insert({
       id: 0n, patient: handle, contact_id, direction: 'out', channel: 'imessage', body: text,
-      status: 'queued', created_at: ctx.timestamp,
+      status: 'queued', assisted: isSuggestion(ctx, handle, text), created_at: ctx.timestamp,
     });
     countPhrase(ctx, handle, text);
     clearSuggestions(ctx, handle);
@@ -399,7 +405,7 @@ export const receive_message = spacetimedb.reducer(
     clearSuggestions(ctx, handle);
     ctx.db.message.insert({
       id: 0n, patient: handle, contact_id: contactId, direction: 'in', channel: clean(channel, 20) || 'imessage',
-      body: text, status: 'received', created_at: ctx.timestamp,
+      body: text, status: 'received', assisted: false, created_at: ctx.timestamp,
     });
   }
 );
@@ -421,6 +427,27 @@ export const add_suggestions = spacetimedb.reducer(
     clearSuggestions(ctx, handle);
     texts.slice(0, 4).forEach((raw, i) => {
       const text = clean(raw, 160);
+      if (text) {
+        ctx.db.suggestion.insert({
+          id: 0n, patient: handle, message_id, contact_id, text, rank: i,
+          source: clean(source, 20), created_at: ctx.timestamp,
+        });
+      }
+    });
+  }
+);
+
+/** Suggestions that each go to a specific person (the agent inferred the recipient). */
+export const add_routed_suggestions = spacetimedb.reducer(
+  { patient: t.string(), message_id: t.u64(), contact_ids: t.array(t.u64()), texts: t.array(t.string()), source: t.string() },
+  (ctx, { patient: handle, message_id, contact_ids, texts, source }) => {
+    getPatient(ctx, handle);
+    if (contact_ids.length !== texts.length) throw new SenderError('one contact per suggestion');
+    clearSuggestions(ctx, handle);
+    texts.slice(0, 4).forEach((raw, i) => {
+      const text = clean(raw, 160);
+      const c = ctx.db.contact.id.find(contact_ids[i]);
+      const contact_id = c && c.patient === handle ? c.id : 0n;
       if (text) {
         ctx.db.suggestion.insert({
           id: 0n, patient: handle, message_id, contact_id, text, rank: i,

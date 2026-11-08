@@ -23,8 +23,11 @@ export interface AgentPorts {
   conversation(): Array<{ who: string; text: string; at?: string }>;
   patientState(): Record<string, unknown>;
   contact(): { name: string; relation: string; isCaregiver: boolean };
+  /** Everyone the patient can text (for routing a message to the right person). */
+  contacts(): Array<{ id: bigint; name: string; relation: string }>;
   alertCaregivers(reason: string): Promise<void>;
-  propose(replies: string[], source: 'nemotron' | 'fallback'): Promise<void>;
+  /** Replies; `to[i]` is the contact for replies[i] (omitted = whoever the conversation is with). */
+  propose(replies: string[], source: 'nemotron' | 'fallback', to?: bigint[]): Promise<void>;
   log(step: string, detail: string): Promise<void>;
 }
 
@@ -85,6 +88,31 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'list_contacts',
+      description: 'People the patient can text, with their relation (mother, brother, nurse...).',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'propose_messages',
+      description: 'Finish (for keywords): exactly 4 complete messages, each addressed to the person it is for. Use names from list_contacts.',
+      parameters: {
+        type: 'object',
+        properties: {
+          messages: {
+            type: 'array',
+            items: { type: 'object', properties: { to: { type: 'string' }, text: { type: 'string' } }, required: ['to', 'text'] },
+          },
+        },
+        required: ['messages'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'propose_replies',
       description: 'Finish: give exactly 4 short first-person replies the patient can send with one selection.',
       parameters: {
@@ -107,7 +135,7 @@ function systemPrompt(name: string): string {
 
 function taskPrompt(task: Task, contact: { name: string; relation: string }): string {
   if (task.kind === 'intent') {
-    return `The patient selected these keywords with their eyes: "${task.keywords}". Expand them into 4 complete replies to ${contact.name} (${contact.relation || 'contact'}), using the conversation for context.`;
+    return `The patient selected these keywords with their eyes: "${task.keywords}". Work out who each message is for (a name or relation in the keywords, otherwise ${contact.name}): call list_contacts, read the conversation, then call propose_messages with 4 complete messages, each addressed to the right person. Offer different people if the keywords are ambiguous.`;
   }
   return `New message from ${contact.name} (${contact.relation || 'unknown relation'}): "${task.message.body}". Follow the workflow.`;
 }
@@ -171,6 +199,19 @@ function clampReplies(replies: unknown[]): string[] {
     if (t && !seen.has(t.toLowerCase())) { seen.add(t.toLowerCase()); out.push(t); }
   }
   return out.slice(0, 4);
+}
+
+/** Map a name the model wrote ("Alex", "mom", "my brother") to a contact id. */
+export function resolveContact(to: string, contacts: Array<{ id: bigint; name: string; relation: string }>): bigint | undefined {
+  const t = to.toLowerCase().replace(/^(my|to)\s+/, '').trim();
+  if (!t) return undefined;
+  const exact = contacts.find(c => c.name.toLowerCase() === t || c.relation.toLowerCase() === t);
+  if (exact) return exact.id;
+  const alias: Record<string, string[]> = { mother: ['mom', 'mum', 'mama'], father: ['dad', 'papa'], brother: ['bro'], sister: ['sis'] };
+  const loose = contacts.find(c =>
+    t.startsWith(c.name.toLowerCase().split(' ')[0]) || c.name.toLowerCase().startsWith(t) ||
+    (alias[c.relation.toLowerCase()] ?? []).includes(t));
+  return loose?.id;
 }
 
 // ------------------------------------------------------------------ the run
@@ -238,6 +279,26 @@ export async function runAgent(task: Task, ports: AgentPorts, fetchFn: Fetch = f
         case 'get_patient_state':
           result = ports.patientState();
           break;
+        case 'list_contacts':
+          result = ports.contacts().map(c => ({ name: c.name, relation: c.relation }));
+          break;
+        case 'propose_messages': {
+          const items = (Array.isArray(args.messages) ? args.messages : []).filter((m: any) => m && m.text);
+          const texts = clampReplies(items.map((m: any) => m.text));
+          if (texts.length >= 2) {
+            const people = ports.contacts();
+            const to = texts.map(t => {
+              const m = items.find((x: any) => stripThinking(String(x.text)).replace(/\s+/g, ' ').trim().slice(0, 140) === t);
+              return resolveContact(String(m?.to ?? ''), people) ?? 0n;
+            });
+            await log('tool', `propose_messages(${texts.map((t, i) => `${people.find(p => p.id === to[i])?.name ?? 'reply'}: ${t}`).join(' | ').slice(0, 300)})`);
+            await ports.propose(texts, 'nemotron', to);
+            await log('reply', texts.join(' | '));
+            return texts;
+          }
+          result = { error: 'need 4 messages with to and text' };
+          break;
+        }
         case 'alert_caregivers':
           if (!alerted) { await ports.alertCaregivers(String(args.reason ?? 'Agent safety concern')); alerted = true; }
           result = { sent: true };

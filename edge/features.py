@@ -131,8 +131,9 @@ def apply_context(times, preds):
 
 def blink_command(n):
     """Blinks in one quick group -> command. One blink is natural and ignored.
-    2 = select, 3 = toggle (switch BlinkTalk on/off), 4 or more = sos."""
-    if n >= 4:
+    2 = select, 3 = toggle (switch BlinkTalk on/off), 5 or more = sos.
+    4 is deliberately unused, so a toggle and an SOS can never be confused."""
+    if n >= 5:
         return "sos"
     if n == 3:
         return "toggle"
@@ -163,7 +164,7 @@ def count_blinks(group):
 
 def to_commands(times, preds, signs=None):
     """Turn per-event predictions into BlinkTalk commands:
-    left / right glances, 2 blinks = select, 3 = toggle on/off, 4 = sos.
+    left / right glances, 2 blinks = select, 3 = toggle on/off, 5 = sos.
     A single blink is treated as natural and ignored.
     signs = slope sign of each event (lets one blink's two edges count once)."""
     cmds, k = [], 0

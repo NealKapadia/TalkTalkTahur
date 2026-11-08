@@ -148,15 +148,15 @@ function startDemo(set: (s: Snapshot) => void) {
   };
   s.contacts = [
     { id: 1n, patient: 'neal', name: 'Mom', address: '+14695550101', relation: 'mother', tier: 1 },
-    { id: 2n, patient: 'neal', name: 'Adrian', address: '+19725550142', relation: 'brother', tier: 2 },
+    { id: 2n, patient: 'neal', name: 'Alex', address: '+19725550142', relation: 'brother', tier: 2 },
     { id: 3n, patient: 'neal', name: 'Night nurse', address: 'nurse@example.org', relation: 'care team', tier: 3 },
   ];
   const push = () => set({ ...s, patient: s.patient && { ...s.patient }, contacts: [...s.contacts], messages: [...s.messages], suggestions: [...s.suggestions], alerts: [...s.alerts], eyes: [...s.eyes], heart: [...s.heart], agent: [...s.agent], phrases: [...s.phrases] });
   for (let i = 0; i < 60; i++) s.heart.push({ id: nid(), patient: 'neal', bpm: 70 + Math.round(4 * Math.sin(i / 5) + Math.random() * 3), quality: 0.8, at: now() });
   const msg = (contact_id: bigint, direction: string, body: string, extra: Partial<Message> = {}) =>
-    s.messages.push({ id: nid(), patient: 'neal', contact_id, direction, channel: contact_id ? 'imessage' : 'speech', body, status: direction === 'in' ? 'received' : 'sent', created_at: now(), ...extra });
+    s.messages.push({ id: nid(), patient: 'neal', contact_id, direction, channel: contact_id ? 'imessage' : 'speech', body, status: direction === 'in' ? 'received' : 'sent', assisted: false, created_at: now(), ...extra });
   msg(1n, 'in', 'Are you still awake, sweetheart?');
-  msg(1n, 'out', 'Yes. Can you come by?');
+  msg(1n, 'out', 'Yes. Can you come by?', { assisted: true });
   msg(0n, 'out', 'Thank you.', { status: 'spoken' });
   const step = (step: string, detail: string) => s.agent.push({ id: nid(), patient: 'neal', run_id: detail.slice(1, 5), step, detail, at: now() });
   step('plan', '[a1f3] Text from Mom. Plan: read the conversation and Neal\'s state, check whether caregivers need to know, draft 4 replies.');
@@ -185,7 +185,7 @@ function startDemo(set: (s: Snapshot) => void) {
   at(t + 600, () => { s.patient!.last_spoken = "I'd like some water, please."; s.patient!.draft = ''; s.patient!.status = 'speaking'; msg(0n, 'out', "I'd like some water, please.", { status: 'spoken' }); eye('select'); });
   at(t + 3000, () => {
     msg(2n, 'in', 'Hey bro, want me to bring dinner after my shift? Pho or tacos?');
-    step('plan', '[b7c2] Text from Adrian. Plan: read the conversation and Neal\'s state, check whether caregivers need to know, draft 4 replies.');
+    step('plan', '[b7c2] Text from Alex. Plan: read the conversation and Neal\'s state, check whether caregivers need to know, draft 4 replies.');
     step('tool', '[b7c2] get_conversation({}) -> 1 message');
     step('tool', '[b7c2] get_patient_state({}) -> {"heart_rate_now":73,"favourite_phrases":["I\'d like some water, please.","Thank you."]}');
     step('tool', '[b7c2] propose_replies(4 options)');
@@ -193,7 +193,7 @@ function startDemo(set: (s: Snapshot) => void) {
     s.suggestions = ['Pho, please!', 'Tacos sound great.', 'Not hungry tonight.', 'What time are you coming?']
       .map((text, rank) => ({ id: nid(), patient: 'neal', message_id: 0n, contact_id: 2n, text, rank, source: 'nemotron', created_at: now() }));
   });
-  at(t + 6500, () => { eye('select'); eye('select'); msg(2n, 'out', 'Pho, please!'); s.suggestions = []; s.patient!.last_spoken = 'Pho, please!'; });
+  at(t + 6500, () => { eye('select'); eye('select'); msg(2n, 'out', 'Pho, please!', { assisted: true }); s.suggestions = []; s.patient!.last_spoken = 'Pho, please!'; });
   at(t + 9000, () => { eye('sos'); s.patient!.status = 'sos'; s.patient!.heart_bpm = 118; s.alerts.push({ id: nid(), patient: 'neal', kind: 'sos', detail: 'Triple blink on the speller', level: 1, notified_level: 1, acked_by: '', created_at: now(), acked_at: undefined }); });
   const beat = window.setInterval(() => {
     const p = s.patient!;
@@ -219,12 +219,14 @@ function startDemo(set: (s: Snapshot) => void) {
     },
     setDraft: draft => { s.patient!.draft = draft; push(); },
     speak: text => { msg(0n, 'out', text, { status: 'spoken' }); s.patient!.last_spoken = text; push(); },
-    replyLatest: body => { const m = latestIn(); if (m) msg(m.contact_id, 'out', body); s.suggestions = []; push(); },
+    replyLatest: body => { const m = latestIn(); if (m) msg(m.contact_id, 'out', body, { assisted: s.suggestions.some(x => x.text === body) }); s.suggestions = []; push(); },
     requestIntent: keywords => {
       timers.push(window.setTimeout(() => {
         const k = keywords.trim();
-        s.suggestions = [`I'd like some ${k}, please.`, `Could I have ${k} later?`, `No ${k} for now, thanks.`, `Is there any ${k}?`]
-          .map((text, rank) => ({ id: nid(), patient: 'neal', message_id: 0n, contact_id: 1n, text, rank, source: 'nemotron', created_at: now() }));
+        const who = /alex|bro/i.test(k) ? 2n : 1n;
+        const word = k.replace(/\b(alex|mom|bro)\b/gi, '').trim() || k;
+        const drafts: Array<[bigint, string]> = [[who, `Can you bring ${word} tonight?`], [who, `${word[0].toUpperCase()}${word.slice(1)} later, please.`], [who === 1n ? 2n : 1n, `Could you pick up ${word}?`], [who, `No ${word} for now, thanks.`]];
+        s.suggestions = drafts.map(([contact_id, text], rank) => ({ id: nid(), patient: 'neal', message_id: 0n, contact_id, text, rank, source: 'nemotron', created_at: now() }));
         push();
       }, 1200));
     },
@@ -233,7 +235,7 @@ function startDemo(set: (s: Snapshot) => void) {
     addContact: (name, address, relation, tier) => { s.contacts.push({ id: nid(), patient: 'neal', name, address, relation, tier }); push(); },
     removeContact: cid => { s.contacts = s.contacts.filter(c => c.id !== cid); push(); },
     simulateText: (address, name, body) => { let c = s.contacts.find(x => x.address === address); if (!c) { c = { id: nid(), patient: 'neal', name: name || address, address, relation: 'unknown', tier: 0 }; s.contacts.push(c); } msg(c.id, 'in', body); push(); },
-    sendAsPatient: (cid, body) => { msg(cid, 'out', body); push(); },
+    sendAsPatient: (cid, body) => { msg(cid, 'out', body, { assisted: s.suggestions.some(x => x.text === body) }); s.suggestions = []; push(); },
     clearDemo: () => { s.messages = []; s.alerts = []; s.suggestions = []; s.agent = []; s.eyes = []; push(); },
   };
   return { actions, stop: () => { timers.forEach(clearTimeout); clearInterval(beat); } };
