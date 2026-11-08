@@ -562,7 +562,7 @@ def main():
     p.add_argument("--scan-ms", type=int, default=1200, help="auto-scan step time")
     p.add_argument("--serial", help="board console port, e.g. COM12 (needs: pip install pyserial)")
     p.add_argument("--led", type=int, default=12, help="PPG LED current code for the board")
-    p.add_argument("--spacetime", default=os.environ.get("SPACETIME_HTTP", "http://localhost:3000"),
+    p.add_argument("--spacetime", default=os.environ.get("SPACETIME_HTTP", "http://127.0.0.1:3000"),
                    help="SpacetimeDB server (HTTP)")
     p.add_argument("--db", default=os.environ.get("SPACETIME_DB", "blinktalk"), help="SpacetimeDB database name")
     p.add_argument("--patient", default=os.environ.get("BLINKTALK_PATIENT", "neal"))

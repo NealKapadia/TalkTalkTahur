@@ -19,7 +19,7 @@ import urllib.request
 
 
 class Cloud:
-    def __init__(self, host="http://localhost:3000", db="blinktalk", patient="neal",
+    def __init__(self, host="http://127.0.0.1:3000", db="blinktalk", patient="neal",
                  timeout=4.0, verbose=True):
         self.base = host.rstrip("/") + f"/v1/database/{db}"
         self.patient = patient
@@ -48,8 +48,11 @@ class Cloud:
         while not self._stop.is_set():
             reducer, args = self._calls.get()
             try:
+                t0 = time.time()
                 self._post(f"/call/{reducer}", json.dumps(args).encode(), "application/json")
                 self._set_online(True)
+                if self.verbose and reducer == "eye_command":
+                    print(f"[cloud] sent {args[1]} for {args[0]} ({(time.time() - t0) * 1000:.0f} ms)")
             except urllib.error.HTTPError as e:
                 self._set_online(True)
                 if self.verbose:
