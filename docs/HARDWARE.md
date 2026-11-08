@@ -1,13 +1,3 @@
-# BlinkTalk
-
-Eye-movement communication for people who cannot speak, running offline on TI hardware.
-Electrodes around the eyes are read by the **TI AFE4950EVM** (its ECG channel picks up the
-eye's electrooculogram, EOG). A **scikit-learn** model on the **TI SK-AM62B** classifies each
-eye movement, and a speller turns glances and blinks into spoken phrases.
-
-UT Dallas HackEdge 2026 · Track 2 (Intelligent Physiological Analytics) ·
-Team BlinkTalk: Neal Kapadia, Adrian Miciano, Alexander Montesino
-
 ## Pipeline
 
 ```
@@ -180,5 +170,5 @@ command delay 1.2-1.4 s after the eye movement (the model needs 0.8 s of signal 
 TI SDK Linux (Arago), Python 3.14, NumPy 2.4.3. Install packages once: run
 `board/download_packages.bat` on a Windows laptop, copy the `board` folder to the SD card's
 boot partition, then on the board `sh /run/media/boot-mmcblk1p1/board/install.sh`.
-Copy `edge/` the same way (`cp -r /run/media/boot-mmcblk1p1/edge /root/`). For the Track 2
+Copy `edge/` the same way (`cp -r /run/media/boot-mmcblk1p1/edge /root/`). For an
 offline check run `ip route` (no route = offline) and `/usr/bin/time -v python3 calibrate.py ...`.

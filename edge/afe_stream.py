@@ -1,5 +1,5 @@
 """
-BlinkTalk - live AFE4950EVM reader for the SK-AM62B (Track 2 Step 20).
+BlinkTalk - live AFE4950EVM reader for the SK-AM62B.
 
 The AFE4950EVM's micro-USB (J10) plugs into the SK-AM62B's USB-A port and
 shows up as two serial ports (/dev/ttyACM0, /dev/ttyACM1). This module speaks

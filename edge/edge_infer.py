@@ -1,10 +1,10 @@
 """
-BlinkTalk - offline inference on the SK-AM62B (Track 2 Steps 19-22).
+BlinkTalk - offline inference on the SK-AM62B.
 
 Two modes:
   Raw recording (full pipeline: filter -> detect -> features -> model -> commands)
       python3 edge_infer.py --model artifacts/model.joblib --raw data/neal_blink.csv
-  Feature file (the Track 2 guide's format; prints accuracy if a 'label' column exists)
+  Feature file (one row per movement; prints accuracy if a 'label' column exists)
       python3 edge_infer.py --model artifacts/model.joblib --input data/features.csv
 
 Benchmarks printed for the report:
@@ -105,7 +105,7 @@ def main():
     p.add_argument("--model", required=True)
     g = p.add_mutually_exclusive_group(required=True)
     g.add_argument("--raw", help="raw AFE4950 CSV export")
-    g.add_argument("--input", help="feature CSV (Track 2 guide format)")
+    g.add_argument("--input", help="feature CSV (one row per movement)")
     p.add_argument("--repeat", type=int, default=5, help="passes for latency statistics")
     a = p.parse_args()
 

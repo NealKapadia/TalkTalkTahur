@@ -4,7 +4,7 @@ BlinkTalk - shared signal processing and feature extraction.
 The SAME code runs on the laptop (training) and on the SK-AM62B (inference),
 so features always match. Only numpy + scipy are needed.
 
-Pipeline (documented for the Track 2 report):
+Pipeline:
   1. Load AFE4950 ECG-channel export (CSV: time_s, volts) -> millivolts
   2. 60 Hz notch (Q=30) + 2nd-order 10 Hz low-pass Butterworth (zero phase)
   3. Candidate events = rising and falling slope peaks above 6 x robust

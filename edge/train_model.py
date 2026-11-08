@@ -1,7 +1,7 @@
 """
-BlinkTalk - train the eye-gesture classifier (TI Track 2 template, extended).
+BlinkTalk - train the eye-gesture classifier (StandardScaler + RandomForest).
 
-Model: StandardScaler + RandomForestClassifier (as in the Track 2 guide).
+Model: StandardScaler + RandomForestClassifier.
 Input:  features.csv from prepare_dataset.py
         (columns subject_id, label, split, + numeric features)
 Output: artifacts/model.joblib  (model + exact feature order + config)

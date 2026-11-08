@@ -20,22 +20,22 @@ Team: Neal Kapadia, Adrian Miciano, Alexander Montesino
 
 ## What it does
 
-1. **Neal glances and blinks.** The board classifies each eye movement on-device. Left/right moves the highlight, a double blink selects and a triple blink is SOS.
-2. **Every letter is live.** The speller streams Neal's draft, his eye movements and his heart rate (PPG) into SpacetimeDB. The caregiver dashboard shows his words appearing as he chooses them.
-3. **Someone texts Neal.** Photon delivers the iMessage into SpacetimeDB, and the **Nemotron agent** starts a run:
-   - reads the conversation and Neal's live state (heart rate, time, favourite phrases)
+1. **The patient glances and blinks.** The board classifies each eye movement on-device. Left/right moves the highlight, a double blink selects and a triple blink is SOS.
+2. **Every letter is live.** The speller streams the patient's draft, eye movements and heart rate (PPG) into SpacetimeDB. The caregiver dashboard shows the words appearing as they're chosen.
+3. **Someone texts the patient.** Photon delivers the iMessage into SpacetimeDB, and the **Nemotron agent** starts a run:
+   - reads the conversation and the patient's live state (heart rate, time, favourite phrases)
    - decides whether caregivers need to know
-   - puts four replies, written in Neal's voice, on his screen
+   - puts four replies, written in the patient's voice, on their screen
 
-   One double blink sends a reply back over iMessage. Neal can also spell a few keywords ("water later") and pick **AI expand** to get full sentences.
-4. **Neal triple-blinks.** SpacetimeDB raises an SOS and Photon texts tier-1 caregivers. If nobody replies "OK" within 45 s, a **scheduled reducer** escalates to tier 2, then tier 3. When someone replies "OK" (or taps *I'm on it* on the dashboard), Neal's screen says help is coming.
+   One double blink sends a reply back over iMessage. The patient can also spell a few keywords ("water later") and pick **AI expand** to get full sentences.
+4. **The patient triple-blinks.** SpacetimeDB raises an SOS and Photon texts tier-1 caregivers. If nobody replies "OK" within 45 s, a **scheduled reducer** escalates to tier 2, then tier 3. When someone replies "OK" (or taps *I'm on it* on the dashboard), the patient's screen says help is coming.
 
 ## How each sponsor's tech is used
 
 | Track | What it does in BlinkTalk |
 |---|---|
 | **Spacetime** | The whole backend is one SpacetimeDB module (`spacetime/src/index.ts`): 11 tables, 21 reducers and a scheduled SOS-escalation reducer. It handles validation, pruning, heart-rate alert rules, phrase learning, conversation routing and acknowledgement. The speller, hub and dashboard are thin clients. The dashboard is a pure live subscription, so a new eye movement reaches a caregiver's screen in one round trip. It runs locally (`spacetime start`) for an offline home setup, or on Maincloud for remote family. |
-| **Photon** | Gives Neal a real iMessage line (`hub/src/photon.ts`, Photon 2.0 API). People text him like anyone else, he answers with his eyes, and caregivers get SOS alerts in the chat app they already use. Replying "OK" acknowledges an alert. |
+| **Photon** | Gives the patient a real iMessage line (`hub/src/photon.ts`, Photon 2.0 API). People text them like anyone else, they answer with their eyes, and caregivers get SOS alerts in the chat app they already use. Replying "OK" acknowledges an alert. |
 | **NVIDIA Nemotron** | Not a chatbot: a tool-calling agent (`hub/src/agent.ts`). It plans, calls `get_conversation`, `get_patient_state` and `alert_caregivers`, then `propose_replies`. Every step is written to SpacetimeDB and shown on the dashboard. It runs on build.nvidia.com or fully offline on a local `nemotron-3-nano` through Ollama. It degrades to JSON mode if tools are rejected, and to built-in replies if no model is reachable. |
 
 ## Run it (Windows)
@@ -59,6 +59,7 @@ cd spacetime ; spacetime publish --server local -y blinktalk ; cd ..
 
 # 5. Smoke test: plays speller + hub + dashboard against the server, ~20 s
 npm run e2e
+npm run photon-check          # optional: confirms the Photon key and line
 
 # 6. Hub: Photon bridge + Nemotron agent (terminal 2)
 npm run hub
@@ -76,9 +77,10 @@ python speller/speller.py                 # add --serial COM12 with the SK-AM62B
 ### Photon setup (app.beta.photon.codes)
 
 1. **API keys:** create a key with `project:read` and `project:write`. Put it in `.env` as `PHOTON_API_KEY`, and the project id (`pho_prj_…`) as `PHOTON_PROJECT_ID`.
-2. **iMessage, then Add someone to the line:** add the iPhone number of every person who should text Neal or get his SOS alerts (e.g. Mom), and assign each one a number from the shared pool. That number is "Neal's" BlinkTalk line.
+2. **iMessage, then Add someone to the line:** add the iPhone number of every person who should text the patient or get their SOS alerts (e.g. Mom), and assign each one a number from the shared pool. That number is the patient's BlinkTalk line.
 3. **Each person texts that line once** (e.g. "hi"). A shared line can only reply to people who texted it first. The hub remembers each chat in `hub/.photon-routes.json`.
 4. Add the same people in the dashboard's **Care circle** with a tier, so SOS alerts reach them in order.
+5. Check it: `npm run photon-check` confirms the key works and lists recent texts to the line.
 
 ### Fully offline Nemotron (no internet except iMessage)
 
