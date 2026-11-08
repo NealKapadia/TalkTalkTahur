@@ -40,6 +40,7 @@ export const settings = {
   nemotronTimeoutMs: Number(env('NEMOTRON_TIMEOUT', '90')) * 1000,
   geminiKey: env('GEMINI_API_KEY'),
   geminiModel: env('GEMINI_MODEL', 'gemini-flash-latest'),
+  geminiTimeoutMs: Number(env('GEMINI_TIMEOUT', '40')) * 1000,
   photonProjectId: env('PHOTON_PROJECT_ID'),
   photonApiKey: env('PHOTON_API_KEY'),
   photonBaseUrl: env('PHOTON_BASE_URL', 'https://api.photon.codes'),

@@ -219,16 +219,26 @@ async function main() {
       .catch(err => console.error('[agent] intent failed', err));
   });
 
-  const briefingsSeen = new Set([...conn.db.briefing.iter()].map(b => b.id));
-  conn.db.briefing.onInsert((_ctx, b: Briefing) => {
+  // Caregiver briefings: answer every pending request, including ones made while the hub was down.
+  const briefingsSeen = new Set<bigint>();
+  const handleBriefing = (b: Briefing) => {
     if (b.patient !== P || b.status !== 'pending' || briefingsSeen.has(b.id)) return;
     briefingsSeen.add(b.id);
+    console.log(`[briefing] writing the last ${b.hours} h for ${b.requested_by}…`);
     void (async () => {
-      const { text, model } = await writeBriefing(periodFor(conn, b.hours));
-      console.log(`[briefing] ${model}: ${text.slice(0, 120)}…`);
-      await conn.reducers.setBriefing({ id: b.id, text, model });
-    })().catch(err => console.error('[briefing] failed', err));
-  });
+      let out: { text: string; model: string };
+      try {
+        out = await writeBriefing(periodFor(conn, b.hours));
+      } catch (err) {
+        console.error('[briefing] could not gather the data', err);
+        out = { text: 'BlinkTalk could not put together a summary just now. Please try again in a minute.', model: 'rules' };
+      }
+      console.log(`[briefing] ${out.model}: ${out.text.slice(0, 120)}…`);
+      await conn.reducers.setBriefing({ id: b.id, text: out.text, model: out.model });
+    })().catch(err => console.error('[briefing] failed to save', err));
+  };
+  conn.db.briefing.onInsert((_ctx, b: Briefing) => handleBriefing(b));
+  for (const b of conn.db.briefing.iter()) handleBriefing(b);
 
   conn.db.alert.onInsert((_ctx, a: Alert) => void notifyAlert(conn, msgr, a));
   conn.db.alert.onUpdate((_ctx, _old, a: Alert) => void notifyAlert(conn, msgr, a));

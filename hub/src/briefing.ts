@@ -66,22 +66,29 @@ export function rulesBriefing(p: Period): string {
 
 export async function writeBriefing(p: Period, fetchFn: Fetch = fetch): Promise<{ text: string; model: string }> {
   if (!settings.geminiKey) return { text: rulesBriefing(p), model: 'rules' };
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), settings.geminiTimeoutMs);
   try {
     const res = await fetchFn(`https://generativelanguage.googleapis.com/v1beta/models/${settings.geminiModel}:generateContent`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-goog-api-key': settings.geminiKey },
+      signal: ctl.signal,
       body: JSON.stringify({
         contents: [{ parts: [{ text: PROMPT(periodToText(p)) }] }],
-        generationConfig: { temperature: 0.3, maxOutputTokens: 500 },
+        // generous limit: newer Flash models spend part of it thinking before they write
+        generationConfig: { temperature: 0.3, maxOutputTokens: 2048 },
       }),
     });
     if (!res.ok) throw new Error(`Gemini HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
-    const data = (await res.json()) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
-    const text = (data.candidates?.[0]?.content?.parts ?? []).map(x => x.text ?? '').join('').trim();
+    const data = (await res.json()) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string; thought?: boolean }> } }> };
+    const text = (data.candidates?.[0]?.content?.parts ?? []).filter(x => !x.thought).map(x => x.text ?? '').join('').trim();
     if (!text) throw new Error('Gemini returned no text');
     return { text: text.slice(0, 2000), model: settings.geminiModel };
   } catch (err) {
-    console.error('[briefing] Gemini unavailable, using rules:', String((err as Error).message ?? err).slice(0, 200));
+    const why = (err as Error)?.name === 'AbortError' ? `no answer within ${settings.geminiTimeoutMs / 1000}s` : String((err as Error).message ?? err).slice(0, 300);
+    console.error('[briefing] Gemini unavailable, using a plain summary:', why);
     return { text: rulesBriefing(p), model: 'rules' };
+  } finally {
+    clearTimeout(timer);
   }
 }

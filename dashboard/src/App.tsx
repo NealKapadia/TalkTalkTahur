@@ -358,7 +358,10 @@ function CatchUp({ snap, name, actions }: { snap: Snapshot; name: string; action
   const [hours, setHours] = useState('12');
   const [me] = useLocal('blinktalk.me', '');
   const latest = snap.briefings.at(-1);
-  const pending = latest?.status === 'pending';
+  const now = useNow(2000);
+  const waited = latest ? (now - latest.created_at.toDate().getTime()) / 1000 : 0;
+  const stuck = latest?.status === 'pending' && waited > 50;
+  const pending = latest?.status === 'pending' && !stuck;
   return (
     <section className="panel catchup">
       <h3>Catch up on {name}</h3>
@@ -370,14 +373,14 @@ function CatchUp({ snap, name, actions }: { snap: Snapshot; name: string; action
           </p>
         </>
       ) : (
-        <p className="muted">{pending ? 'Gemini is reading the last few hours…' : `Missed something? Get a short handoff note on ${name}’s conversations, alerts and heart rate.`}</p>
+        <p className="muted">{stuck ? 'No answer yet. Check that the hub is running (npm run hub), then try again.' : pending ? 'Gemini is reading the last few hours…' : `Missed something? Get a short handoff note on ${name}’s conversations, alerts and heart rate.`}</p>
       )}
       <div className="row">
         <select aria-label="How far back" value={hours} onChange={e => setHours(e.target.value)}>
           <option value="3">Last 3 hours</option><option value="12">Last 12 hours</option><option value="24">Last 24 hours</option>
         </select>
         <button type="button" className="btn" disabled={pending} onClick={() => actions.requestBriefing(Number(hours), me || 'a caregiver')}>
-          {pending ? 'Writing…' : 'Catch me up'}
+          {pending ? 'Writing…' : stuck ? 'Try again' : 'Catch me up'}
         </button>
       </div>
     </section>
