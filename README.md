@@ -1,6 +1,6 @@
 # Blink Blink Blink Tahur
 
-**BlinkTalk: talk, text and call for help with your eyes.** Three blinks and help is on the way.
+**BlinkTalk: talk, text and call for help with your eyes.** Two blinks to choose, three to switch it on or off, four to call for help.
 
 People with ALS, locked-in syndrome or a severe stroke often understand everything and can say nothing. BlinkTalk reads eye movements from three electrodes on the forehead and turns glances and blinks into speech, iMessages and SOS alerts. Family can see what their person is saying, live, from anywhere.
 
@@ -20,7 +20,7 @@ Team: Neal Kapadia, Adrian Miciano, Alexander Montesino
 
 ## What it does
 
-1. **The patient glances and blinks.** The board classifies each eye movement on-device. Left/right moves the highlight, a double blink selects and a triple blink is SOS.
+1. **The patient glances and blinks.** The board classifies each eye movement on-device. Left/right moves the highlight, two blinks select, three blinks switch BlinkTalk on or off (so the patient can rest their eyes without typing) and four blinks are SOS.
 2. **Every letter is live.** The speller streams the patient's draft, eye movements and heart rate (PPG) into SpacetimeDB. The caregiver dashboard shows the words appearing as they're chosen.
 3. **Someone texts the patient.** Photon delivers the iMessage into SpacetimeDB, and the **Nemotron agent** starts a run:
    - reads the conversation and the patient's live state (heart rate, time, favourite phrases)
@@ -28,7 +28,7 @@ Team: Neal Kapadia, Adrian Miciano, Alexander Montesino
    - puts four replies, written in the patient's voice, on their screen
 
    One double blink sends a reply back over iMessage. The patient can also spell a few keywords ("water later") and pick **AI expand** to get full sentences.
-4. **The patient triple-blinks.** SpacetimeDB raises an SOS and Photon texts tier-1 caregivers. If nobody replies "OK" within 45 s, a **scheduled reducer** escalates to tier 2, then tier 3. When someone replies "OK" (or taps *I'm on it* on the dashboard), the patient's screen says help is coming.
+4. **The patient blinks four times.** SpacetimeDB raises an SOS and Photon texts tier-1 caregivers. If nobody replies "OK" within 45 s, a **scheduled reducer** escalates to tier 2, then tier 3. When someone replies "OK" (or taps *I'm on it* on the dashboard), the patient's screen says help is coming.
 
 ## How each sponsor's tech is used
 

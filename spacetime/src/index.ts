@@ -26,7 +26,7 @@ const HEART_ALERT_RUN = 5;          // consecutive out-of-range good-quality sam
 const SOS_ESCALATE_SECONDS = 45n;   // unacknowledged SOS -> next caregiver tier
 const SOS_MAX_LEVEL = 3;
 
-const COMMANDS = ['left', 'right', 'select', 'sos'] as const;
+const COMMANDS = ['left', 'right', 'select', 'toggle', 'sos'] as const;
 
 // ------------------------------------------------------------------ tables
 const patient = table(
@@ -34,7 +34,7 @@ const patient = table(
   {
     handle: t.string().primaryKey(),
     display_name: t.string(),
-    status: t.string(),                // idle | composing | speaking | sos
+    status: t.string(),                // idle | composing | speaking | paused | sos
     draft: t.string(),                 // live text being spelled with the eyes
     last_spoken: t.string(),
     heart_bpm: t.u16(),                // 0 = unknown
@@ -295,8 +295,11 @@ export const eye_command = spacetimedb.reducer(
     ctx.db.eye_event.insert({ id: 0n, patient: handle, command, at: ctx.timestamp });
     prune(ctx.db.eye_event.iter(), handle, KEEP_EYE_EVENTS, r => ctx.db.eye_event.id.delete(r.id));
     if (command === 'sos') {
-      raiseAlert(ctx, handle, 'sos', 'Triple blink on the speller');
+      raiseAlert(ctx, handle, 'sos', 'Four blinks on the speller');
       touch(ctx, handle, { status: 'sos' });
+    } else if (command === 'toggle') {
+      const p = getPatient(ctx, handle);
+      if (p.status !== 'sos') touch(ctx, handle, { status: p.status === 'paused' ? 'idle' : 'paused' });
     } else {
       touch(ctx, handle, {});
     }
@@ -308,7 +311,8 @@ export const set_draft = spacetimedb.reducer(
   (ctx, { patient: handle, draft }) => {
     const p = getPatient(ctx, handle);
     const d = clean(draft, 500);
-    touch(ctx, handle, { draft: d, status: p.status === 'sos' ? 'sos' : d ? 'composing' : 'idle' });
+    const keep = p.status === 'sos' || p.status === 'paused';
+    touch(ctx, handle, { draft: d, status: keep ? p.status : d ? 'composing' : 'idle' });
   }
 );
 

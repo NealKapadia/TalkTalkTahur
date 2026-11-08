@@ -2,17 +2,17 @@
 
 **Title:** Blink Blink Blink Tahur
 
-**Tagline:** BlinkTalk lets people who can't speak talk, text and call for help with only their eyes. Three blinks and help is on the way.
+**Tagline:** BlinkTalk lets people who can't speak talk, text and call for help with only their eyes. Two blinks to choose, three to switch it on or off, four to call for help.
 
 ## Inspiration
 People with ALS, locked-in syndrome or a severe stroke often understand everything and can't say a word. Eye-tracking communication devices cost thousands of dollars and stop at the edge of the bedside screen. They can't text your mom, and they can't tell anyone you need help at 3am. We wanted eye movements to reach the people who matter.
 
 ## What it does
-Three electrodes on the forehead pick up the eye's electrical signal (EOG). A model on a TI SK-AM62B board classifies each glance and blink on-device. Left and right move a highlight, a double blink selects and a triple blink is SOS.
+Three electrodes on the forehead pick up the eye's electrical signal (EOG). A model on a TI SK-AM62B board classifies each glance and blink on-device. Left and right move a highlight, two blinks select, three blinks switch BlinkTalk on or off so the patient can rest their eyes, and four blinks call for help. A nervous triple blink can never trigger a false alarm.
 
 - **Speak:** spell or pick phrases; the laptop speaks them aloud.
 - **Text:** BlinkTalk gives the patient an iMessage line through **Photon**. When someone texts, an **NVIDIA Nemotron** agent reads the conversation and the patient's live state, decides whether caregivers need to know, and puts four replies on screen in the patient's voice. One double blink sends a reply. Spelling two keywords and choosing *AI expand* turns them into full sentences.
-- **Get help:** a triple blink texts tier-1 caregivers. If nobody answers "OK" within 45 seconds, a scheduled **SpacetimeDB** reducer escalates to the next tier. When someone acknowledges, the patient's screen says help is on the way.
+- **Get help:** four blinks text tier-1 caregivers. If nobody answers "OK" within 45 seconds, a scheduled **SpacetimeDB** reducer escalates to the next tier. When someone acknowledges, the patient's screen says help is on the way.
 - **A screen made for eyes:** one choice in focus at the centre of a ribbon, the message being answered on top, the patient's words in large type, and a night palette for long sessions.
 - **Be there remotely:** the caregiver dashboard shows the patient's words appearing letter by letter, their eye movements, heart rate (PPG), the conversation, alerts and every step the AI agent took.
 

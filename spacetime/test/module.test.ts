@@ -26,6 +26,23 @@ test('eye commands are logged and SOS raises one alert with an escalation timer'
   assert.equal([...h.db.sos_timer.iter()].length, 1);
 });
 
+test('three blinks pause and resume; SOS still works while paused', () => {
+  const { h, run } = harness();
+  run(ctx => mod.eye_command(ctx, { patient: 'neal', command: 'toggle' }));
+  assert.equal(h.db.patient.handle.find('neal')!.status, 'paused');
+  run(ctx => mod.set_draft(ctx, { patient: 'neal', draft: 'hi' }));
+  assert.equal(h.db.patient.handle.find('neal')!.status, 'paused', 'typing state does not unpause');
+  run(ctx => mod.eye_command(ctx, { patient: 'neal', command: 'sos' }));
+  assert.equal(h.db.patient.handle.find('neal')!.status, 'sos');
+  run(ctx => mod.eye_command(ctx, { patient: 'neal', command: 'toggle' }));
+  assert.equal(h.db.patient.handle.find('neal')!.status, 'sos', 'toggle never hides an SOS');
+  run(ctx => mod.cancel_sos(ctx, { patient: 'neal' }));
+  run(ctx => mod.eye_command(ctx, { patient: 'neal', command: 'toggle' }));
+  assert.equal(h.db.patient.handle.find('neal')!.status, 'paused');
+  run(ctx => mod.eye_command(ctx, { patient: 'neal', command: 'toggle' }));
+  assert.equal(h.db.patient.handle.find('neal')!.status, 'idle');
+});
+
 test('unacknowledged SOS escalates tier by tier; ack stops it and clears status', () => {
   const { h, run } = harness();
   run(ctx => mod.raise_sos(ctx, { patient: 'neal', detail: 'test' }));

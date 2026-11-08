@@ -5,7 +5,8 @@ Turns a recorded eye signal (CSV exported from the AFE4950EVM GUI, or any
 CSV with one column of samples) into BlinkTalk events:
 
     select  = double blink
-    sos     = triple blink
+    toggle  = triple blink (switch BlinkTalk on/off)
+    sos     = four blinks
     left    = glance left
     right   = glance right
 
@@ -49,7 +50,7 @@ def load_csv(path, col=0, skip=None):
 
 
 def synthetic_signal(fs=250, seed=1):
-    """Fake EOG: double blink, glance right, triple blink, glance left, single blink."""
+    """Fake EOG: double blink, glance right, triple blink (toggle), glance left, single blink."""
     rng = np.random.default_rng(seed)
     t = np.arange(0, 20, 1 / fs)
     x = rng.normal(0, 8, t.size)                      # noise (uV)
@@ -66,7 +67,7 @@ def synthetic_signal(fs=250, seed=1):
         x += blink(t0)
     x += glance(5.0, 180)             # look right
     x += glance(6.2, -180)            # look back to centre
-    for t0 in (9.0, 9.4, 9.8):        # triple blink -> sos
+    for t0 in (9.0, 9.4, 9.8):        # triple blink -> toggle
         x += blink(t0)
     x += glance(13.0, -180)           # look left
     x += glance(14.2, 180)            # back to centre
@@ -106,8 +107,10 @@ def detect(x, fs, invert=False, swap_lr=False, blink_k=6.0, glance_k=5.0,
         while j + 1 < len(blink_times) and blink_times[j + 1] - blink_times[j] <= multi_gap:
             j += 1
         n = j - i + 1
-        if n >= 3:
-            events.append((blink_times[i + 2], "sos"))
+        if n >= 4:
+            events.append((blink_times[i + 3], "sos"))
+        elif n == 3:
+            events.append((blink_times[i + 2], "toggle"))
         elif n == 2:
             events.append((blink_times[i + 1], "select"))
         # n == 1: natural blink, ignored on purpose

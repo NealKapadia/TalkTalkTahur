@@ -25,7 +25,7 @@ export interface Snapshot {
 }
 
 export interface Actions {
-  eye(command: 'left' | 'right' | 'select' | 'sos'): void;
+  eye(command: 'left' | 'right' | 'select' | 'toggle' | 'sos'): void;
   setDraft(text: string): void;
   speak(text: string): void;
   replyLatest(text: string): void;
@@ -209,6 +209,7 @@ function startDemo(set: (s: Snapshot) => void) {
   const actions: Actions = {
     eye: command => {
       eye(command);
+      if (command === 'toggle' && s.patient!.status !== 'sos') s.patient!.status = s.patient!.status === 'paused' ? 'idle' : 'paused';
       if (command === 'sos' && s.patient!.status !== 'sos') {
         s.patient!.status = 'sos';
         s.alerts.push({ id: nid(), patient: 'neal', kind: 'sos', detail: 'Triple blink on the speller', level: 1, notified_level: 1, acked_by: '', created_at: now(), acked_at: undefined });

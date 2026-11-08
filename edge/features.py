@@ -108,7 +108,7 @@ def feature_vector(y, d, i, fs):
 
 
 RETURN_S = 1.5       # opposite glance within this time = eyes returning to centre
-MULTI_BLINK_S = 0.8  # blinks closer than this belong to one double/triple blink
+MULTI_BLINK_S = 0.8  # blinks closer than this belong to one multi-blink gesture
 SAME_BLINK_S = 0.2   # blink edges closer than this are the same blink (down + up edge)
 
 
@@ -127,6 +127,18 @@ def apply_context(times, preds):
                 continue
             last_glance, last_t = p, t
     return out
+
+
+def blink_command(n):
+    """Blinks in one quick group -> command. One blink is natural and ignored.
+    2 = select, 3 = toggle (switch BlinkTalk on/off), 4 or more = sos."""
+    if n >= 4:
+        return "sos"
+    if n == 3:
+        return "toggle"
+    if n == 2:
+        return "select"
+    return None
 
 
 def count_blinks(group):
@@ -151,7 +163,7 @@ def count_blinks(group):
 
 def to_commands(times, preds, signs=None):
     """Turn per-event predictions into BlinkTalk commands:
-    left / right glances, double blink = select, triple blink = sos.
+    left / right glances, 2 blinks = select, 3 = toggle on/off, 4 = sos.
     A single blink is treated as natural and ignored.
     signs = slope sign of each event (lets one blink's two edges count once)."""
     cmds, k = [], 0
@@ -167,10 +179,9 @@ def to_commands(times, preds, signs=None):
                 if preds[j] == "blink":
                     last_blink = times[j]
             n = count_blinks(list(zip(preds[k:j + 1], times[k:j + 1], signs[k:j + 1])))
-            if n >= 3:
-                cmds.append((t, "sos"))
-            elif n == 2:
-                cmds.append((t, "select"))
+            cmd = blink_command(n)
+            if cmd:
+                cmds.append((t, cmd))
             k = j + 1
             continue
         if p in ("left", "right"):

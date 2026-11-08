@@ -130,3 +130,13 @@ body:has(.pt) { background: #17121e; }
 @media (prefers-reduced-motion: reduce) {
   .pt *, .pt *::before, .pt *::after { animation: none !important; transition: none !important; }
 }
+
+/* paused ("resting") */
+.pt-paused {
+  position: absolute; inset: 0; z-index: 4;
+  display: grid; place-content: center; text-align: center; gap: 14px; padding: 40px;
+  background: color-mix(in srgb, var(--bg) 94%, transparent); color: var(--ink);
+}
+.pt-paused h1 { margin: 0; font: 600 clamp(56px, 8vw, 104px)/1 var(--voice); color: var(--muted); }
+.pt-paused p { margin: 0; font-size: clamp(22px, 2.4vw, 30px); max-width: 32ch; justify-self: center; color: var(--muted); }
+.pt-paused-how b { color: var(--ink); letter-spacing: 0.12em; margin-right: 8px; }

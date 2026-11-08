@@ -4,7 +4,8 @@ BlinkTalk speller - prototype.
 Keyboard stands in for the eyes until the live signal is connected:
     Left / Right arrow   glance left / right (move the highlight)
     Space or Enter       double blink (select)
-    S                    triple blink (SOS alert)
+    P                    triple blink (switch BlinkTalk on/off)
+    S                    four blinks (SOS alert)
     A                    toggle auto-scan (blink-only mode)
     Esc                  quit
 
@@ -334,6 +335,7 @@ class App:
         self.scan_ms = scan_ms
         self.auto = False
         self.sos_on = False
+        self.paused = False
         self.panel = None               # board controls (only with --serial)
 
         root.title("BlinkTalk")
@@ -365,14 +367,14 @@ class App:
         self.event_lbl.pack(anchor="w", padx=40)
         self.hr_lbl = tk.Label(root, font=("Segoe UI", 18, "bold"), fg=AMBER, bg=BG)
         self.hr_lbl.place(relx=1.0, x=-40, y=32, anchor="ne")
-        tk.Label(root, text="Left/Right = glance   Space = double blink   "
-                            "S = SOS   A = auto-scan   Esc = quit",
+        tk.Label(root, text="Left/Right = glance   Space = 2 blinks   P = 3 blinks (on/off)   "
+                            "S = 4 blinks (SOS)   A = auto-scan   Esc = quit",
                  font=("Segoe UI", 12), fg=QUIET, bg=BG).pack(side="bottom", pady=12)
 
         self.sos = tk.Label(root, text="SOS\nCaregiver alert\n\n(double blink to clear)",
                             font=("Segoe UI", 54, "bold"), fg="white", bg=RED)
 
-        for key in ("<Left>", "<Right>", "<space>", "<Return>", "s", "S", "a", "A"):
+        for key in ("<Left>", "<Right>", "<space>", "<Return>", "s", "S", "a", "A", "p", "P"):
             root.bind(key, self._on_key)
         root.bind("<Escape>", lambda e: root.destroy())
         self.render()
@@ -383,11 +385,11 @@ class App:
             return                      # typing a user name, not controlling the speller
         k = e.keysym.lower()
         self.event({"left": "left", "right": "right", "space": "select",
-                    "return": "select", "s": "sos", "a": "auto"}[k])
+                    "return": "select", "s": "sos", "a": "auto", "p": "toggle"}[k])
 
     def event(self, name):
         self.event_lbl.config(text=f"last input: {name}")
-        if self.cloud and name in ("left", "right", "select", "sos"):
+        if self.cloud and name in ("left", "right", "select", "toggle", "sos"):
             self.cloud.eye(name)
         if self.bridge:                 # the browser patient screen acts on it
             self.event_lbl.config(text=f"forwarded: {name}")
@@ -401,12 +403,17 @@ class App:
             self.sos.place(relx=0, rely=0, relwidth=1, relheight=1)
             alarm()
             speak("Help, please. I need assistance.")
+        elif name == "toggle":
+            self.paused = not self.paused
+            speak("BlinkTalk paused." if self.paused else "BlinkTalk is on.")
         elif self.sos_on:
             if name == "select":
                 self.sos_on = False
                 self.sos.place_forget()
                 if self.cloud:
                     self.cloud.cancel_sos()
+        elif self.paused:
+            pass                        # resting: only toggle and SOS act
         elif name == "left":
             self.sp.move(-1)
         elif name == "right":
@@ -451,7 +458,7 @@ class App:
     def _scan(self):
         if not self.auto:
             return
-        if not self.sos_on:
+        if not self.sos_on and not self.paused:
             self.sp.move(1)
             self.render()
         self.root.after(self.scan_ms, self._scan)
@@ -468,6 +475,8 @@ class App:
                 "quick": "Quick phrases"}[sp.mode]
         if self.auto:
             mode += "   (auto-scan on)"
+        if self.paused:
+            mode = "Paused: triple blink to switch BlinkTalk back on"
         self.mode_lbl.config(text=mode)
         self.text_lbl.config(text=(sp.text or " ") + "_")
         if sp.status:
@@ -515,7 +524,7 @@ class App:
         if self.panel and self.panel.calibrating:
             return                      # no speller actions while calibrating
         kind = parts[1]
-        if kind == "CMD" and len(parts) >= 3 and parts[2] in ("left", "right", "select", "sos"):
+        if kind == "CMD" and len(parts) >= 3 and parts[2] in ("left", "right", "select", "toggle", "sos"):
             self.event(parts[2])
         elif kind == "HR":
             txt = "heart rate --" if parts[2] == "--" else f"heart rate {parts[2]} bpm"

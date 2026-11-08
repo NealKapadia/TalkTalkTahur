@@ -59,11 +59,9 @@ class GestureStream:
 
     def _flush(self):
         out = []
-        n = F.count_blinks(self.group)
-        if n >= 3:
-            out.append((self.group_start, "sos"))
-        elif n == 2:
-            out.append((self.group_start, "select"))
+        cmd = F.blink_command(F.count_blinks(self.group))
+        if cmd:
+            out.append((self.group_start, cmd))
         self.group, self.group_start = [], None
         return out
 

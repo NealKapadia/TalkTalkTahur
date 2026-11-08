@@ -13,7 +13,7 @@ import { DEMO, useBlinkTalk } from './data';
 import { Speller, type Item } from './speller';
 import './patient.css';
 
-type Cmd = 'left' | 'right' | 'select' | 'sos';
+type Cmd = 'left' | 'right' | 'select' | 'toggle' | 'sos';
 
 function tts(text: string) {
   try {
@@ -46,6 +46,7 @@ export default function PatientScreen() {
   const rerender = () => force(n => n + 1);
   const [pulse, setPulse] = useState<{ side: Cmd; n: number } | null>(null);
   const [localSos, setLocalSos] = useState(false);
+  const [localPause, setLocalPause] = useState(false);
   const [ackNote, setAckNote] = useState<string | null>(null);
   const actionsRef = useRef(actions);
   actionsRef.current = actions;
@@ -67,6 +68,9 @@ export default function PatientScreen() {
   const sosOn = snap.patient?.status === 'sos' || localSos;
   const sosRef = useRef(sosOn);
   sosRef.current = sosOn;
+  const paused = !sosOn && (snap.patient?.status === 'paused' || localPause);
+  const pausedRef = useRef(paused);
+  pausedRef.current = paused;
 
   // Backend context -> speller (AI replies, whether texting is possible, phrase ranking).
   useEffect(() => {
@@ -90,6 +94,12 @@ export default function PatientScreen() {
       if (cmd === 'select') { actionsRef.current.cancelSos(); setLocalSos(false); }
       return;
     }
+    if (cmd === 'toggle') {
+      tts(pausedRef.current ? 'BlinkTalk is on.' : 'BlinkTalk paused.');
+      if (link !== 'live' && !DEMO) setLocalPause(p => !p);
+      return;
+    }
+    if (pausedRef.current) return;   // resting: only toggle and SOS act
     if (cmd === 'left') s.move(-1);
     else if (cmd === 'right') s.move(1);
     else s.select();
@@ -116,7 +126,7 @@ export default function PatientScreen() {
   // Keyboard stands in for the eyes.
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
-      const map: Record<string, Cmd> = { ArrowLeft: 'left', ArrowRight: 'right', ' ': 'select', Enter: 'select', s: 'sos', S: 'sos' };
+      const map: Record<string, Cmd> = { ArrowLeft: 'left', ArrowRight: 'right', ' ': 'select', Enter: 'select', p: 'toggle', P: 'toggle', s: 'sos', S: 'sos' };
       const cmd = map[ev.key];
       if (!cmd) return;
       ev.preventDefault();
@@ -212,7 +222,8 @@ export default function PatientScreen() {
       <footer className="pt-legend">
         <span><b>‹ ›</b> look to move</span>
         <span><b>● ●</b> double blink to choose</span>
-        <span><b>● ● ●</b> triple blink for help</span>
+        <span><b>● ● ●</b> three blinks: on / off</span>
+        <span><b>● ● ● ●</b> four blinks for help</span>
       </footer>
 
       {sosOn && (
@@ -220,6 +231,13 @@ export default function PatientScreen() {
           <h1>Getting you help</h1>
           <p>{ladder.length ? `Texting ${ladder.filter(c => !openSos || c.tier <= openSos.level).map(c => c.name).join(', ') || ladder[0].name}.` : 'Alerting your caregivers.'} {ladder.length > 1 ? 'If nobody answers, BlinkTalk tries the next person.' : ''}</p>
           <p className="pt-sos-cancel">Double blink to cancel</p>
+        </div>
+      )}
+      {paused && (
+        <div className="pt-paused" role="status">
+          <h1>Resting</h1>
+          <p>BlinkTalk is ignoring your eyes so you can look around freely.</p>
+          <p className="pt-paused-how"><b>● ● ●</b> Three blinks to switch it back on. Four blinks still calls for help.</p>
         </div>
       )}
       {ackNote && !sosOn && <div className="pt-ack" role="status">{ackNote}</div>}

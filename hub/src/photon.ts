@@ -77,7 +77,7 @@ export function createPhoton(opts: {
     let pageToken: string | undefined;
     let newest = since;
     do {
-      const q = new URLSearchParams({ direction: 'received', order: 'asc', orderBy: 'createdAt', createdSince: since, pageSize: '100' });
+      const q = new URLSearchParams({ direction: 'received', order: 'asc', orderBy: 'created_at', createdSince: since, pageSize: '100' });
       if (pageToken) q.set('pageToken', pageToken);
       const res = await f(`${base}/v1/projects/${opts.projectId}/messages?${q}`, { headers });
       if (res.status === 429) {
@@ -86,7 +86,7 @@ export function createPhoton(opts: {
         log(`rate limited; pausing ${wait}s`);
         return handled;
       }
-      if (!res.ok) throw new PhotonError(`list messages HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+      if (!res.ok) throw new PhotonError(`list messages HTTP ${res.status}: ${(await res.text()).slice(0, 600)}`);
       const page = (await res.json()) as { items?: any[]; nextPageToken?: string };
       for (const m of page.items ?? []) {
         if (!m?.id || seen.has(m.id)) continue;

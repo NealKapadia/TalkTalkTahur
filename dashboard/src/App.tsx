@@ -59,7 +59,8 @@ function Header({ snap, link, name }: { snap: Snapshot; link: Link; name: string
   const status = !p ? 'Waiting for the speller' :
     p.status === 'sos' ? `${name} is asking for help` :
     p.status === 'composing' ? `${name} is spelling` :
-    p.status === 'speaking' ? `${name} just spoke` : `${name} is resting`;
+    p.status === 'speaking' ? `${name} just spoke` :
+    p.status === 'paused' ? `${name} switched BlinkTalk off to rest` : `${name} is idle`;
   const linkText = { connecting: 'Connecting', live: 'Live', offline: 'Reconnecting', demo: 'Demo' }[link];
   return (
     <header className="head">
@@ -153,7 +154,7 @@ function SosBand({ alert, snap, name, now, actions }: { alert: Alert; snap: Snap
 }
 
 // ------------------------------------------------------------------ the voice (hero)
-const GLYPH: Record<string, string> = { left: '←', right: '→', select: '●', sos: '!' };
+const GLYPH: Record<string, string> = { left: '←', right: '→', select: '●', toggle: '⏻', sos: '!' };
 function Voice({ snap, name, now }: { snap: Snapshot; name: string; now: number }) {
   const p = snap.patient;
   const draft = p?.draft ?? '';

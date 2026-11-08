@@ -7,7 +7,7 @@ AFE4950EVM (ECG channel, 500 Hz) -> CSV export
   -> 14 features per movement (edge shape, levels, extremes, noise)
   -> StandardScaler + RandomForest: blink / left / right / none      (on SK-AM62B)
   -> gesture rule: opposite glance within 1.5 s = return to centre
-  -> commands: left, right, double blink = select, triple blink = SOS
+  -> commands: left, right, 2 blinks = select, 3 blinks = on/off, 4 blinks = SOS
 ```
 
 Each user gets a **personal model trained on the board** from a short calibration
@@ -137,7 +137,7 @@ The bottom bar controls the board over the serial console (no network):
   recall below 50%, adds the recordings to the default model, and then asks for the person's **name**.
 - **Recalibrate**: the same for the selected person.
 
-Glance = move the highlight, double blink = select, triple blink = SOS.
+Glance = move the highlight, 2 blinks = select, 3 blinks = switch on/off, 4 blinks = SOS.
 
 Board side, also usable in PuTTY: `python3 calib_session.py --user alex`, `--list-users`, `--build-default`,
 `--rename person2 alex`.
