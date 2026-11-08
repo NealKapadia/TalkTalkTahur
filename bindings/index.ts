@@ -119,7 +119,19 @@ const AgentStepRow = __t.row({
   at: __t.timestamp(),
 });
 
+const BriefingRow = __t.row({
+  id: __t.u64().primaryKey(),
+  patient: __t.string(),
+  hours: __t.u16(),
+  status: __t.string(),
+  text: __t.string(),
+  model: __t.string(),
+  requested_by: __t.string(),
+  created_at: __t.timestamp(),
+});
+
 export type Patient = __Infer<typeof PatientRow>;
+export type Briefing = __Infer<typeof BriefingRow>;
 export type Contact = __Infer<typeof ContactRow>;
 export type Message = __Infer<typeof MessageRow>;
 export type Suggestion = __Infer<typeof SuggestionRow>;
@@ -142,6 +154,7 @@ const tablesSchema = __schema({
   heart_sample: __table({ name: 'heart_sample' }, HeartSampleRow),
   phrase: __table({ name: 'phrase' }, PhraseRow),
   agent_step: __table({ name: 'agent_step' }, AgentStepRow),
+  briefing: __table({ name: 'briefing' }, BriefingRow),
 });
 
 // ---------------------------------------------------------------- reducers
@@ -162,6 +175,8 @@ const reducersSchema = __reducers(
   __reducerSchema('request_intent', { patient: __t.string(), keywords: __t.string() }),
   __reducerSchema('finish_intent', { id: __t.u64() }),
   __reducerSchema('log_agent_step', { patient: __t.string(), run_id: __t.string(), step: __t.string(), detail: __t.string() }),
+  __reducerSchema('request_briefing', { patient: __t.string(), hours: __t.u16(), requested_by: __t.string() }),
+  __reducerSchema('set_briefing', { id: __t.u64(), text: __t.string(), model: __t.string() }),
   __reducerSchema('raise_sos', { patient: __t.string(), detail: __t.string() }),
   __reducerSchema('ack_alert', { id: __t.u64(), by: __t.string() }),
   __reducerSchema('ack_alert_by_reply', { patient: __t.string(), address: __t.string() }),

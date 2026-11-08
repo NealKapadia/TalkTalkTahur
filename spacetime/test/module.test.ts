@@ -94,6 +94,19 @@ test('routed suggestions go to the inferred person; sending one is marked AI-ass
   assert.deepEqual(out.map(m => m.assisted), [true, false]);
 });
 
+test('briefings: request is pending, the hub fills it in, only 10 kept', () => {
+  const { h, run } = harness();
+  for (let i = 0; i < 12; i++) run(ctx => mod.request_briefing(ctx, { patient: 'neal', hours: 500, requested_by: 'Mom' }));
+  const all = [...h.db.briefing.iter()];
+  assert.equal(all.length, 10);
+  assert.equal(all[0].hours, 72, 'clamped to 72 h');
+  assert.equal(all[0].status, 'pending');
+  run(ctx => mod.set_briefing(ctx, { id: all[0].id, text: 'Quiet night.', model: 'gemini-flash-latest' }));
+  const b = h.db.briefing.id.find(all[0].id)!;
+  assert.equal(b.status, 'done');
+  assert.equal(b.text, 'Quiet night.');
+});
+
 test('sustained high heart rate raises one alert; noisy readings do not', () => {
   const { h, run } = harness();
   for (let i = 0; i < 4; i++) run(ctx => mod.heartbeat(ctx, { patient: 'neal', bpm: 140, quality: 0.2 }));

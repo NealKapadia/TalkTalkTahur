@@ -56,7 +56,7 @@ async function main() {
     DbConnection.builder().withUri(WS).withDatabaseName(DB)
       .onConnect(c => c.subscriptionBuilder().onApplied(() => res(c)).subscribe([
         tables.patient, tables.contact, tables.message, tables.suggestion, tables.alert,
-        tables.eye_event, tables.heart_sample, tables.agent_step, tables.phrase,
+        tables.eye_event, tables.heart_sample, tables.agent_step, tables.phrase, tables.briefing,
       ]))
       .onConnectError((_c, e) => rej(e)).build();
   });
@@ -70,7 +70,7 @@ async function main() {
   const hubLog: string[] = [];
   const hub = spawn(process.execPath, ['--import', 'tsx', 'hub/src/main.ts'], {
     cwd: root,
-    env: { ...process.env, SPACETIME_URI: WS, SPACETIME_DB: DB, PHOTON_API_KEY: '', PHOTON_PROJECT_ID: '', NVIDIA_API_KEY: process.env.E2E_NVIDIA_API_KEY ?? '', NEMOTRON_BASE_URL: process.env.E2E_NEMOTRON_BASE_URL ?? 'https://integrate.api.nvidia.com/v1' },
+    env: { ...process.env, SPACETIME_URI: WS, SPACETIME_DB: DB, PHOTON_API_KEY: '', PHOTON_PROJECT_ID: '', NVIDIA_API_KEY: process.env.E2E_NVIDIA_API_KEY ?? '', GEMINI_API_KEY: process.env.E2E_GEMINI_API_KEY ?? '', NEMOTRON_BASE_URL: process.env.E2E_NEMOTRON_BASE_URL ?? 'https://integrate.api.nvidia.com/v1' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   hub.stdout.on('data', d => hubLog.push(String(d)));
@@ -130,6 +130,11 @@ async function main() {
   await until('ack', () => alert && conn.db.alert.id.find(alert.id)?.acked_by === 'Mom');
   ok('caregiver "OK" acknowledges SOS', alert ? conn.db.alert.id.find(alert.id)?.acked_by === 'Mom' : false);
   ok('patient status back to idle', conn.db.patient.handle.find(P)?.status === 'idle');
+
+  // ---------- caregiver briefing (Gemini in the hub; plain summary without a key)
+  conn.reducers.requestBriefing({ patient: P, hours: 12, requested_by: 'e2e' });
+  const brief = await until('briefing', () => [...conn.db.briefing.iter()].find(b => b.patient === P && b.status === 'done'), 30000);
+  ok('"Catch me up" briefing written by the hub', !!brief && brief.text.length > 20, brief ? `${brief.model}: ${brief.text.slice(0, 90)}…` : '');
 
   if (process.env.E2E_ESCALATION === '1') {
     await call('raise_sos', P, 'escalation test');

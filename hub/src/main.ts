@@ -9,6 +9,8 @@ import { settings, redact } from './env.ts';
 import { connect, contactById, contactsOf, conversation, recentHeart, topPhrases, type Conn } from './db.ts';
 import { startPhoton, type Messenger } from './photon.ts';
 import { runAgent, describeImage, photoTag, type AgentPorts, type Task } from './agent.ts';
+import { writeBriefing, type Period } from './briefing.ts';
+import type { Briefing } from '../../bindings/index.ts';
 
 const P = settings.patient;
 const ACK_WORDS = /^\s*(ok(ay)?|on it|coming|got it|here|omw|on my way|i'?m here|yes|👍)\b/i;
@@ -125,10 +127,44 @@ async function deliver(conn: Conn, msgr: Messenger, m: Message) {
   }
 }
 
+// ------------------------------------------------------------------ caregiver briefing input
+function periodFor(conn: Conn, hours: number): Period {
+  const now = new Date();
+  const since = now.getTime() - hours * 3600_000;
+  const recent = <T extends { patient: string }>(rows: Iterable<T>, at: (r: T) => Date) =>
+    [...rows].filter(r => r.patient === P && at(r).getTime() >= since);
+  const name = (id: bigint) => contactById(conn, id)?.name?.split(' ')[0] ?? 'someone';
+  return {
+    patientName: displayName(conn),
+    hours,
+    now,
+    messages: recent(conn.db.message.iter(), m => m.created_at.toDate())
+      .sort((a, b) => (a.id < b.id ? -1 : 1))
+      .map(m => ({
+        at: m.created_at.toDate(),
+        who: name(m.contact_id),
+        to: m.direction === 'out' ? name(m.contact_id) : undefined,
+        text: m.body,
+        kind: m.channel === 'speech' ? 'spoken' as const : m.direction === 'in' ? 'in' as const : 'out' as const,
+        assisted: m.assisted,
+      })),
+    alerts: recent(conn.db.alert.iter(), a => a.created_at.toDate()).map(a => ({
+      at: a.created_at.toDate(),
+      kind: a.kind,
+      ackedBy: a.acked_by || undefined,
+      ackSeconds: a.acked_at ? Math.round((a.acked_at.toDate().getTime() - a.created_at.toDate().getTime()) / 1000) : undefined,
+      level: a.level,
+    })),
+    heart: recent(conn.db.heart_sample.iter(), h => h.at.toDate()).filter(h => h.quality >= 0.5).map(h => h.bpm),
+    eyeMovements: recent(conn.db.eye_event.iter(), e => e.at.toDate()).length,
+  };
+}
+
 // ------------------------------------------------------------------ main
 async function main() {
   console.log(`[hub] patient=${P} spacetime=${settings.spacetimeUri}/${settings.spacetimeDb}`);
   console.log(`[hub] nemotron ${settings.nemotronBaseUrl} model=${settings.nemotronModel} key=${redact(settings.nvidiaKey)}`);
+  console.log(`[hub] gemini briefings model=${settings.geminiModel} key=${redact(settings.geminiKey)}`);
   const conn = await connect();
   console.log('[hub] connected to SpacetimeDB');
 
@@ -181,6 +217,17 @@ async function main() {
       .then(() => runAgent({ kind: 'intent', keywords: i.keywords }, portsFor(conn, i.contact_id, 0n)))
       .then(() => conn.reducers.finishIntent({ id: i.id }))
       .catch(err => console.error('[agent] intent failed', err));
+  });
+
+  const briefingsSeen = new Set([...conn.db.briefing.iter()].map(b => b.id));
+  conn.db.briefing.onInsert((_ctx, b: Briefing) => {
+    if (b.patient !== P || b.status !== 'pending' || briefingsSeen.has(b.id)) return;
+    briefingsSeen.add(b.id);
+    void (async () => {
+      const { text, model } = await writeBriefing(periodFor(conn, b.hours));
+      console.log(`[briefing] ${model}: ${text.slice(0, 120)}…`);
+      await conn.reducers.setBriefing({ id: b.id, text, model });
+    })().catch(err => console.error('[briefing] failed', err));
   });
 
   conn.db.alert.onInsert((_ctx, a: Alert) => void notifyAlert(conn, msgr, a));

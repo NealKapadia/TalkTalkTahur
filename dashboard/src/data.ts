@@ -9,7 +9,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   DbConnection, tables,
-  type AgentStep, type Alert, type Contact, type EyeEvent, type HeartSample, type Message, type Patient, type Phrase, type Suggestion,
+  type AgentStep, type Alert, type Briefing, type Contact, type EyeEvent, type HeartSample, type Message, type Patient, type Phrase, type Suggestion,
 } from '@bindings';
 
 export interface Snapshot {
@@ -22,6 +22,7 @@ export interface Snapshot {
   heart: HeartSample[];
   agent: AgentStep[];
   phrases: Phrase[];
+  briefings: Briefing[];
 }
 
 export interface Actions {
@@ -31,6 +32,7 @@ export interface Actions {
   replyLatest(text: string): void;
   requestIntent(keywords: string): void;
   cancelSos(): void;
+  requestBriefing(hours: number, by: string): void;
   ackAlert(id: bigint, by: string): void;
   addContact(name: string, address: string, relation: string, tier: number): void;
   removeContact(id: bigint): void;
@@ -48,7 +50,7 @@ const DB = params.get('db') ?? (import.meta.env.VITE_SPACETIME_DB as string | un
 export const DEMO = params.has('demo');
 export const PATIENT_VIEW = params.get('view') === 'patient' || location.pathname.endsWith('/patient');
 
-const empty: Snapshot = { contacts: [], messages: [], suggestions: [], alerts: [], eyes: [], heart: [], agent: [], phrases: [] };
+const empty: Snapshot = { contacts: [], messages: [], suggestions: [], alerts: [], eyes: [], heart: [], agent: [], phrases: [], briefings: [] };
 const byId = <T extends { id: bigint }>(a: T, b: T) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
 function snapshot(conn: DbConnection): Snapshot {
@@ -63,6 +65,7 @@ function snapshot(conn: DbConnection): Snapshot {
     heart: mine(conn.db.heart_sample.iter()).sort(byId),
     agent: mine(conn.db.agent_step.iter()).sort(byId),
     phrases: mine(conn.db.phrase.iter()).sort((a, b) => b.uses - a.uses),
+    briefings: mine(conn.db.briefing.iter()).sort(byId),
   };
 }
 
@@ -96,10 +99,10 @@ export function useBlinkTalk(): { snap: Snapshot; link: Link; actions: Actions; 
           .onApplied(refresh)
           .subscribe([
             tables.patient, tables.contact, tables.message, tables.suggestion, tables.alert,
-            tables.eye_event, tables.heart_sample, tables.agent_step, tables.phrase,
+            tables.eye_event, tables.heart_sample, tables.agent_step, tables.phrase, tables.briefing,
           ]);
         const t = c.db;
-        for (const tbl of [t.patient, t.contact, t.message, t.suggestion, t.alert, t.eye_event, t.heart_sample, t.agent_step, t.phrase] as const) {
+        for (const tbl of [t.patient, t.contact, t.message, t.suggestion, t.alert, t.eye_event, t.heart_sample, t.agent_step, t.phrase, t.briefing] as const) {
           (tbl as any).onInsert(refresh);
           (tbl as any).onDelete(refresh);
           (tbl as any).onUpdate?.(refresh);
@@ -124,6 +127,7 @@ export function useBlinkTalk(): { snap: Snapshot; link: Link; actions: Actions; 
     replyLatest: body => r()?.replyLatest({ patient: PATIENT, body }),
     requestIntent: keywords => r()?.requestIntent({ patient: PATIENT, keywords }),
     cancelSos: () => r()?.cancelSos({ patient: PATIENT }),
+    requestBriefing: (hours, by) => r()?.requestBriefing({ patient: PATIENT, hours, requested_by: by }),
     ackAlert: (id, by) => r()?.ackAlert({ id, by }),
     addContact: (name, address, relation, tier) => r()?.addContact({ patient: PATIENT, name, address, relation, tier }),
     removeContact: id => r()?.removeContact({ id }),
@@ -151,7 +155,7 @@ function startDemo(set: (s: Snapshot) => void) {
     { id: 2n, patient: 'neal', name: 'Alex', address: '+19725550142', relation: 'brother', tier: 2 },
     { id: 3n, patient: 'neal', name: 'Night nurse', address: 'nurse@example.org', relation: 'care team', tier: 3 },
   ];
-  const push = () => set({ ...s, patient: s.patient && { ...s.patient }, contacts: [...s.contacts], messages: [...s.messages], suggestions: [...s.suggestions], alerts: [...s.alerts], eyes: [...s.eyes], heart: [...s.heart], agent: [...s.agent], phrases: [...s.phrases] });
+  const push = () => set({ ...s, patient: s.patient && { ...s.patient }, contacts: [...s.contacts], messages: [...s.messages], suggestions: [...s.suggestions], alerts: [...s.alerts], eyes: [...s.eyes], heart: [...s.heart], agent: [...s.agent], phrases: [...s.phrases], briefings: [...s.briefings] });
   for (let i = 0; i < 60; i++) s.heart.push({ id: nid(), patient: 'neal', bpm: 70 + Math.round(4 * Math.sin(i / 5) + Math.random() * 3), quality: 0.8, at: now() });
   const msg = (contact_id: bigint, direction: string, body: string, extra: Partial<Message> = {}) =>
     s.messages.push({ id: nid(), patient: 'neal', contact_id, direction, channel: contact_id ? 'imessage' : 'speech', body, status: direction === 'in' ? 'received' : 'sent', assisted: false, created_at: now(), ...extra });
@@ -229,6 +233,15 @@ function startDemo(set: (s: Snapshot) => void) {
         s.suggestions = drafts.map(([contact_id, text], rank) => ({ id: nid(), patient: 'neal', message_id: 0n, contact_id, text, rank, source: 'nemotron', created_at: now() }));
         push();
       }, 1200));
+    },
+    requestBriefing: (hours, by) => {
+      const b = { id: nid(), patient: 'neal', hours, status: 'pending', text: '', model: '', requested_by: by || 'caregiver', created_at: now() };
+      s.briefings.push(b); push();
+      timers.push(window.setTimeout(() => {
+        b.status = 'done'; b.model = 'gemini-flash-latest';
+        b.text = 'Neal had a mostly calm night. Mom checked in just after 1am and he answered “Yes. Can you come by?” using a suggested reply, then asked aloud for water. Alex offered dinner after his shift and Neal chose pho. One SOS at 2:13am was answered by Mom within a minute. His heart rate stayed steady around 72 bpm; it may be worth asking whether he slept after the SOS.';
+        push();
+      }, 1600));
     },
     cancelSos: () => { for (const a of s.alerts) if (a.kind === 'sos' && !a.acked_by) { a.acked_by = 'patient (cancelled)'; a.acked_at = now(); } s.patient!.status = 'idle'; push(); },
     ackAlert: (aid, by) => { const a = s.alerts.find(x => x.id === aid); if (a) { a.acked_by = by; a.acked_at = now(); } if (s.patient!.status === 'sos') s.patient!.status = 'idle'; push(); },

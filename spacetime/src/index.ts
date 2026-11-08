@@ -156,6 +156,20 @@ const agent_step = table(
   }
 );
 
+const briefing = table(
+  { name: 'briefing', public: true },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    patient: t.string().index('btree'),
+    hours: t.u16(),                    // how far back it covers
+    status: t.string(),                // pending | done
+    text: t.string(),
+    model: t.string(),                 // gemini model id, or "rules" when no key
+    requested_by: t.string(),
+    created_at: t.timestamp(),
+  }
+);
+
 const sos_timer = table(
   { name: 'sos_timer' },
   {
@@ -167,7 +181,7 @@ const sos_timer = table(
 
 const spacetimedb = schema({
   patient, contact, message, suggestion, intent, alert,
-  eye_event, heart_sample, phrase, agent_step, sos_timer,
+  eye_event, heart_sample, phrase, agent_step, briefing, sos_timer,
 });
 export default spacetimedb;
 
@@ -486,6 +500,30 @@ export const log_agent_step = spacetimedb.reducer(
       detail: clean(detail, 600), at: ctx.timestamp,
     });
     prune(ctx.db.agent_step.iter(), handle, KEEP_AGENT_STEPS, r => ctx.db.agent_step.id.delete(r.id));
+  }
+);
+
+// ------------------------------------------------------------------ caregiver briefing (written by Gemini in the hub)
+export const request_briefing = spacetimedb.reducer(
+  { patient: t.string(), hours: t.u16(), requested_by: t.string() },
+  (ctx, { patient: handle, hours, requested_by }) => {
+    getPatient(ctx, handle);
+    const h = Math.max(1, Math.min(72, hours));
+    ctx.db.briefing.insert({
+      id: 0n, patient: handle, hours: h, status: 'pending', text: '', model: '',
+      requested_by: clean(requested_by, 60) || 'caregiver', created_at: ctx.timestamp,
+    });
+    // keep the 10 newest
+    const mine = [...ctx.db.briefing.patient.filter(handle)].sort((a, b) => (a.id < b.id ? -1 : 1));
+    for (const b of mine.slice(0, Math.max(0, mine.length - 10))) ctx.db.briefing.id.delete(b.id);
+  }
+);
+
+export const set_briefing = spacetimedb.reducer(
+  { id: t.u64(), text: t.string(), model: t.string() },
+  (ctx, { id, text, model }) => {
+    const b = ctx.db.briefing.id.find(id);
+    if (b) ctx.db.briefing.id.update({ ...b, status: 'done', text: clean(text, 2000), model: clean(model, 60) });
   }
 );
 

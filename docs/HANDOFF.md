@@ -56,13 +56,13 @@ python speller/speller.py --serial COM12 --bridge   # with the board; keyboard o
 
 ## Configuration: `.env` (gitignored, never commit)
 
-`NVIDIA_API_KEY`, `NEMOTRON_MODEL` (default `nvidia/nemotron-3.5-super-vl-120b-a12b`), `NEMOTRON_BASE_URL` (default `https://integrate.api.nvidia.com/v1`, or `http://localhost:11434/v1` with `ollama pull nemotron-3-nano` for offline), optional `NEMOTRON_VISION_MODEL`, `PHOTON_PROJECT_ID` (`pho_prj_…`, **not** the `pho_sk_…` key id), `PHOTON_API_KEY` (the secret), `SPACETIME_URI`, `SPACETIME_DB`, `BLINKTALK_PATIENT` (default `neal`), `MARITIME_API_KEY` (unused). `npm run check-secrets` and the pre-commit hook (`node scripts/install-hooks.mjs`) block key-shaped strings.
+`NVIDIA_API_KEY`, `NEMOTRON_MODEL` (default `nvidia/nemotron-3.5-super-vl-120b-a12b`), `NEMOTRON_BASE_URL` (default `https://integrate.api.nvidia.com/v1`, or `http://localhost:11434/v1` with `ollama pull nemotron-3-nano` for offline), optional `NEMOTRON_VISION_MODEL`, `PHOTON_PROJECT_ID` (`pho_prj_…`, **not** the `pho_sk_…` key id), `PHOTON_API_KEY` (the secret), `SPACETIME_URI`, `SPACETIME_DB`, `BLINKTALK_PATIENT` (default `neal`), `MARITIME_API_KEY` (unused), `GEMINI_API_KEY` + `GEMINI_MODEL` (default `gemini-flash-latest`) for caregiver briefings. `npm run check-secrets` and the pre-commit hook (`node scripts/install-hooks.mjs`) block key-shaped strings.
 
 The Photon line: the user's iPhone **+1 (972) 979-6413** is assigned to the shared line **+1 (628) 502-4649**.
 
 ## Tests (all passing at handoff)
 
-`npm test -w spacetime` (8) · `npm test -w hub` (15) · `npm test -w dashboard` (7) · `python speller/test_cloud.py` (5) · `python edge/test_gestures.py` (3) · `npm run e2e` (19, needs the server). Live browser checks were also run (patient screen + dashboard on a real server): spelling, live draft, AI replies, one-blink reply, recipient picker, rest mode, SOS, caregiver ack.
+`npm test -w spacetime` (9) · `npm test -w hub` (18) · `npm test -w dashboard` (7) · `python speller/test_cloud.py` (5) · `python edge/test_gestures.py` (3) · `npm run e2e` (20, needs the server). Live browser checks were also run (patient screen + dashboard on a real server): spelling, live draft, AI replies, one-blink reply, recipient picker, rest mode, SOS, caregiver ack.
 
 Verified live by the user: Nemotron tool calls through build.nvidia.com, the Photon key, and SpacetimeDB local publish plus e2e. **Not yet verified live:** a full Photon round trip (text the line while the hub runs), Nemotron vision on a real photo, and the board running the new 5-blink `edge/` code.
 
@@ -89,12 +89,11 @@ MLH prizes don't count against the 3 company tracks (confirm with an organizer).
 ### 1. GoDaddy Registry: Best Domain Name (≈10 min)
 Register a domain with the MLH code, e.g. `blinkblinkblinktalkur.tech` or `blinktalk.us` (check availability). Point it at the hosted dashboard (Vultr, below) or a one-page site. Put it on the Devpost and the deck's cover.
 
-### 2. Gemini: "Picture replies" + natural voice (≈1.5–2 h)
-- **Picture replies (image generation):** a new ribbon item "Send as a picture" (`kind: 'picture'`) on any reply or spelled message. Hub flow: SpacetimeDB reducer `request_picture(patient, contact_id, text)` inserts a `picture_request` row → hub calls Gemini image generation → uploads the image to Photon → sends it to the contact → `mark_picture(id, status)`.
-  - Gemini: `POST https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_IMAGE_MODEL}:generateContent?key=${GEMINI_API_KEY}` with `{"contents":[{"parts":[{"text": prompt}]}]}`; the image comes back as base64 in `candidates[0].content.parts[i].inlineData` (`mimeType`, `data`). Use a current Gemini image model (verify the model id in Google AI Studio; make it an env var). Prompt: "A warm, simple illustrated sticker that says '<text>' for a family chat, no photorealistic people".
-  - Photon upload: `POST /v1/projects/{id}/attachments` with an `idempotency-key` header and **exactly two multipart parts**: JSON `{contentType, sizeBytes, filename}` then the file bytes (`sizeBytes` must equal the byte length). The response is an Attachment (`id`). Then send with `content: {type: 'attachment', attachmentId}` in the usual `POST /v1/projects/{id}/messages`.
-  - Story for judges: someone who can't speak can still send a "Pho please!" sticker or a birthday card to a grandchild with two blinks. Keep Nemotron as the agent; Gemini only makes the picture.
-- **Optional, the patient's own voice:** a Gemini TTS model to speak "Say it" phrases in a chosen warm voice instead of the browser voice (generate audio in the hub, play it on the patient screen). Only if time allows.
+### 2. Gemini: DONE, caregiver "Catch me up" briefings
+- Built: `hub/src/briefing.ts` + SpacetimeDB `briefing` table (`request_briefing`, `set_briefing`) + the dashboard "Catch me up" panel. Gemini `gemini-flash-latest` via `POST https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent` with header `X-goog-api-key`. Falls back to a rule-based summary with no key or on errors. Covered by tests in `hub/test/briefing.test.ts` and the e2e run.
+- Pitch: two models, two jobs. Nemotron is the patient's keyboard; Gemini writes the family's shift-handoff note.
+- The free tier has no image generation, so "picture replies" are dropped unless a paid image model becomes available. The Photon upload notes stay here in case: `POST /v1/projects/{id}/attachments`, `idempotency-key`, exactly two multipart parts (JSON `{contentType, sizeBytes, filename}` then the bytes), then send `content: {type: 'attachment', attachmentId}`.
+- Possible extra, if wanted: the hub texts the briefing to tier-1 caregivers each morning over Photon.
 
 ### 3. Vultr: hosted, always-on BlinkTalk, optionally with self-hosted Nemotron (≈1 h; GPU +1 h)
 - Use `deploy/Dockerfile` (hub + built dashboard on :8080) on a Vultr instance (MLH usually provides Vultr credits). SpacetimeDB on Maincloud (`spacetime publish --server maincloud -y blinktalk-neal`). Point the GoDaddy domain at it. Judges scan a QR code and watch the live dashboard on their phones. Only one hub runs at a time: stop the laptop hub.

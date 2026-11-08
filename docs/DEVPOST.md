@@ -15,6 +15,7 @@ BlinkTalk lets someone who can't speak or move talk, text and call for help usin
 - **Real iMessage:** the patient has their own iMessage line through **Photon**. Family text them like anyone else, and photos show up described on screen.
 - **AI that never speaks for them:** an **NVIDIA Nemotron** agent drafts four replies in their voice. Spell "alex pho" and it works out who it's for: *"to Alex: Can you bring pho tonight?"*. One double blink sends it. The dashboard counts the eye movements it saved.
 - **Help in five blinks:** an SOS texts the first caregiver. If nobody replies "OK" within 45 seconds it moves to the next person, then the next. When someone answers, the patient's screen says help is on the way.
+- **Catch me up:** a caregiver who just woke up or came off shift taps one button, and **Google Gemini** writes a short handoff note: who the patient talked with, what they asked for, any SOS and how fast it was answered, and their heart rate.
 - **Family can be there from anywhere:** a caregiver dashboard shows their words appearing letter by letter, a live eye trace drawn the way the electrodes see it, heart rate, the conversation and every step the AI took.
 
 ## How we built it
@@ -22,6 +23,7 @@ BlinkTalk lets someone who can't speak or move talk, text and call for help usin
 - **SpacetimeDB is the entire backend:** one TypeScript module with 11 tables and ~23 reducers holds every rule: heart-rate alerts, phrase learning, message routing, and SOS escalation as a *scheduled reducer*, so it still escalates if every screen crashes. The patient screen and dashboard are pure live subscriptions with no API layer.
 - **Photon 2.0:** a Node hub polls the patient's iMessage line, turns incoming texts and photos into database rows, and delivers replies and SOS alerts from the same number. Replying "OK" acknowledges an alert.
 - **NVIDIA Nemotron:** a tool-calling agent (`get_conversation`, `get_patient_state`, `list_contacts`, `alert_caregivers`, `propose_replies`, `propose_messages`) plus Nemotron's vision model for photos. It can run on build.nvidia.com or fully offline through Ollama.
+- **Google Gemini:** writes the caregiver briefings from the last 3–24 hours of conversation, alerts and vitals (`gemini-flash-latest`), with a plain rule-based summary as a fallback. Only first names and the patient's own words are sent. Two models with two jobs: Nemotron for the patient, Gemini for the family.
 - **Front end:** React + Vite for the patient screen and the dashboard; Literata for anything the patient says, Atkinson Hyperlegible (designed for low vision) for the interface.
 - **Testing:** unit tests for the backend, agent, Photon bridge and speller, an end-to-end script against a live SpacetimeDB server, and browser tests that drive both screens at once.
 
@@ -37,7 +39,7 @@ BlinkTalk lets someone who can't speak or move talk, text and call for help usin
 - Five blinks reliably reach a real phone, with escalation and a "help is on the way" confirmation for the patient.
 - Measuring the AI instead of hand-waving: every AI-drafted message is compared with what spelling it would have cost.
 - A patient screen designed for the bedside at night, not a generic dashboard.
-- 57 automated checks, including an end-to-end run against a live SpacetimeDB server.
+- 61 automated checks, including an end-to-end run against a live SpacetimeDB server.
 
 ## What we learned
 - When the database *is* the backend, the clients get simple: the screens are just subscriptions, and the speller talks to the backend through a short HTTP client.
@@ -50,6 +52,6 @@ BlinkTalk lets someone who can't speak or move talk, text and call for help usin
 - A personal synthesized voice, and long-term tracking of gesture accuracy to help care teams notice changes over time.
 
 ## Built with
-spacetimedb, typescript, node.js, react, vite, photon, imessage, nvidia-nemotron, nvidia-nim, ollama, python, tkinter, scikit-learn, numpy, scipy, texas-instruments, am62, afe4950, websockets, vitest, playwright, html5, css3
+spacetimedb, typescript, node.js, react, vite, photon, imessage, nvidia-nemotron, nvidia-nim, gemini, ollama, python, tkinter, scikit-learn, numpy, scipy, texas-instruments, am62, afe4950, websockets, vitest, playwright, html5, css3
 
-(Add `gemini`, `vultr`, `tiger-data` and so on only if you actually ship those integrations.)
+(Add `vultr`, `tiger-data` and so on only if you actually ship those integrations.)

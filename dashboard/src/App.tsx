@@ -43,6 +43,7 @@ export default function App() {
       <main className="grid">
         <Conversation snap={snap} name={name} now={now} actions={actions} />
         <aside className="side">
+          <CatchUp snap={snap} name={name} actions={actions} />
           <OnScreen snap={snap} name={name} />
           <AgentTrace snap={snap} />
           <AlertLog snap={snap} now={now} />
@@ -350,5 +351,35 @@ function Saved({ snap }: { snap: Snapshot }) {
       {name} sent {assisted.length} {assisted.length === 1 ? 'message' : 'messages'} Nemotron drafted, instead of spelling them:
       about <strong>{saved.toLocaleString()} fewer eye movements</strong>, roughly {Math.max(1, Math.round(saved * 1.2 / 60))} {Math.round(saved * 1.2 / 60) === 1 ? 'minute' : 'minutes'} of glancing and blinking.
     </p>
+  );
+}
+
+function CatchUp({ snap, name, actions }: { snap: Snapshot; name: string; actions: Actions }) {
+  const [hours, setHours] = useState('12');
+  const [me] = useLocal('blinktalk.me', '');
+  const latest = snap.briefings.at(-1);
+  const pending = latest?.status === 'pending';
+  return (
+    <section className="panel catchup">
+      <h3>Catch up on {name}</h3>
+      {latest && latest.status === 'done' ? (
+        <>
+          <p className="brief">{latest.text}</p>
+          <p className="hint">
+            {latest.model === 'rules' ? 'Plain summary (add a Gemini key for a written briefing).' : `Written by Google Gemini from the last ${latest.hours} hours.`} Asked by {latest.requested_by}.
+          </p>
+        </>
+      ) : (
+        <p className="muted">{pending ? 'Gemini is reading the last few hours…' : `Missed something? Get a short handoff note on ${name}’s conversations, alerts and heart rate.`}</p>
+      )}
+      <div className="row">
+        <select aria-label="How far back" value={hours} onChange={e => setHours(e.target.value)}>
+          <option value="3">Last 3 hours</option><option value="12">Last 12 hours</option><option value="24">Last 24 hours</option>
+        </select>
+        <button type="button" className="btn" disabled={pending} onClick={() => actions.requestBriefing(Number(hours), me || 'a caregiver')}>
+          {pending ? 'Writing…' : 'Catch me up'}
+        </button>
+      </div>
+    </section>
   );
 }

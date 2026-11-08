@@ -39,6 +39,8 @@ Built by Neal Kapadia
 | **Photon** | Gives the patient a real iMessage line (`hub/src/photon.ts`, Photon 2.0 API). People text them like anyone else, they answer with their eyes, and caregivers get SOS alerts in the chat app they already use. Replying "OK" acknowledges an alert. |
 | **NVIDIA Nemotron** | Not a chatbot: Nemotron is the patient's *keyboard accelerator*, and it never speaks for them. As a tool-calling agent (`hub/src/agent.ts`) it plans, reads the conversation and live state (`get_conversation`, `get_patient_state`, `list_contacts`), decides whether caregivers must know (`alert_caregivers`), and either drafts replies (`propose_replies`) or turns 2–3 eye-picked keywords into messages addressed to the right person (`propose_messages`). The backend marks every message sent from a suggestion, and the dashboard reports the eye movements that saved, measured by simulating what spelling it would have cost on the same keyboard. When someone texts a photo, Nemotron's vision model describes it for the patient's screen and drafts replies to it. Every agent step is written to SpacetimeDB and shown live. It runs on build.nvidia.com or fully offline on a local `nemotron-3-nano` through Ollama. It degrades to JSON mode if tools are rejected, and to built-in replies if no model is reachable. |
 
+**MLH: Google Gemini** writes for the family: a caregiver taps **Catch me up** on the dashboard and Gemini (`hub/src/briefing.ts`, `gemini-flash-latest`) turns the last 3–24 hours of conversation, alerts (and how fast they were answered) and heart rate into a short handoff note, like a nurse's shift handoff. Nemotron is the patient's keyboard; Gemini is the family's briefing. Only first names and the patient's own words are sent. With no key, the hub writes a plain summary instead.
+
 ## Run it (Windows)
 
 Prerequisites: Node 22+, Python 3.10+, the SpacetimeDB CLI.
@@ -122,12 +124,12 @@ Secrets live only in `.env` (gitignored). `npm run check-secrets` scans tracked 
 ## Tests
 
 ```bash
-npm test -w spacetime        # 8 reducer tests on SpacetimeDB's in-process datastore
-npm test -w hub              # 15 tests: agent tool loop, recipient routing, photo description, outage / JSON fallback, Photon polling, photos + replies
+npm test -w spacetime        # 9 reducer tests on SpacetimeDB's in-process datastore
+npm test -w hub              # 18 tests: agent tool loop, recipient routing, photo description, Gemini briefing, outage / JSON fallback, Photon polling, photos + replies
 npm test -w dashboard        # 7 patient-screen tests: speller, recipient picker, spelling-cost model
 python edge/test_gestures.py # blink gestures: 2 choose, 3 on/off, 5 SOS (board + live stream)
 python speller/test_cloud.py # 5 speller <-> SpacetimeDB HTTP tests
-npm run e2e                  # 19 end-to-end checks against a running server (E2E_ESCALATION=1 adds the 45 s escalation)
+npm run e2e                  # 20 end-to-end checks against a running server (E2E_ESCALATION=1 adds the 45 s escalation)
 ```
 
 ## Repository

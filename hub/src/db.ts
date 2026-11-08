@@ -20,7 +20,7 @@ export function connect(): Promise<Conn> {
           .onError(ctx => console.error('[db] subscription error', (ctx as { event?: unknown }).event))
           .subscribe([
             tables.patient, tables.contact, tables.message, tables.suggestion, tables.intent,
-            tables.alert, tables.heart_sample, tables.phrase,
+            tables.alert, tables.heart_sample, tables.phrase, tables.briefing, tables.eye_event,
           ]);
       })
       .onConnectError((_ctx, err) => {
