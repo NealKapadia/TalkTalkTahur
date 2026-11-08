@@ -1,43 +1,55 @@
-# Devpost submission
+# Devpost submission: Blink Blink Blink Talkur (aka BlinkTalk)
 
-**Title:** Blink Blink Blink Talkur (aka BlinkTalk)
+**Elevator pitch (tagline):** Talk, text and call for help with only your eyes: two blinks to choose, five to bring family running.
 
-**Tagline:** BlinkTalk lets people who can't speak talk, text and call for help with only their eyes. Two blinks to choose, three to switch it on or off, five to call for help.
+---
 
 ## Inspiration
-People with ALS, locked-in syndrome or a severe stroke often understand everything and can't say a word. Eye-tracking communication devices cost thousands of dollars and stop at the edge of the bedside screen. They can't text your mom, and they can't tell anyone you need help at 3am. We wanted eye movements to reach the people who matter.
+My uncle had ALS, and he passed away this past month. Watching him slowly lose the ability to move and then to speak was one of the hardest things I've been through. He understood everything going on around him, but by the end he could barely get a word out. The tools we found were expensive, stopped at a screen by his bed, and couldn't text his family or call for help when nobody was in the room. I built BlinkTalk for people like him, and for the families sitting next to them.
 
 ## What it does
-Three electrodes on the forehead pick up the eye's electrical signal (EOG). A model on a TI SK-AM62B board classifies each glance and blink on-device. Left and right move a highlight, two blinks select, three blinks switch BlinkTalk on or off so the patient can rest their eyes, and five blinks call for help. Four blinks do nothing, so switching on or off can never be mistaken for an SOS.
+BlinkTalk lets someone who can't speak or move talk, text and call for help using only their eyes.
 
-- **Speak:** spell or pick phrases; the laptop speaks them aloud.
-- **Text:** BlinkTalk gives the patient an iMessage line through **Photon**. When someone texts, an **NVIDIA Nemotron** agent reads the conversation and the patient's live state, decides whether caregivers need to know, and puts four replies on screen in the patient's voice. One double blink sends a reply.
-- **Say a lot with a little:** spell two keywords ("alex pho") and choose *AI expand*. Nemotron checks the contacts, works out who each message is for, and offers finished messages already addressed ("to Alex: Can you bring pho tonight?"). Or spell your own message, choose *Text it*, and pick the person.
-- **Photos too:** when someone texts a picture, Nemotron's vision model describes it on the patient's screen and suggests replies to it.
-- **Proof it helps:** the dashboard counts the eye movements Nemotron saved. It simulates what spelling each message would have cost on the same keyboard, so every AI-drafted message is measured, not guessed.
-- **Get help:** five blinks text tier-1 caregivers. If nobody answers "OK" within 45 seconds, a scheduled **SpacetimeDB** reducer escalates to the next tier. When someone acknowledges, the patient's screen says help is on the way.
-- **A screen made for eyes:** one choice in focus at the centre of a ribbon, the message being answered on top, the patient's words in large type, and a night palette for long sessions.
-- **Be there remotely:** the caregiver dashboard shows the patient's words appearing letter by letter, their eye movements, heart rate (PPG), the conversation, alerts and every step the AI agent took.
+- **Eyes in:** three electrodes on the forehead pick up the eye's electrical signal. A small TI board recognises each movement on-device: look left or right to move, **two blinks** to choose, **three blinks** to switch BlinkTalk off so they can rest their eyes, and **five blinks** to call for help. Four blinks do nothing, so turning it off can never be mistaken for an SOS.
+- **A screen made for eyes:** one choice is lit at a time on an endless ribbon, the message they're answering sits on top, and their words appear in large type. The colours are warm, with no blue light, because it's on at the bedside all night.
+- **Real iMessage:** the patient has their own iMessage line through **Photon**. Family text them like anyone else, and photos show up described on screen.
+- **AI that never speaks for them:** an **NVIDIA Nemotron** agent drafts four replies in their voice. Spell "alex pho" and it works out who it's for: *"to Alex: Can you bring pho tonight?"*. One double blink sends it. The dashboard counts the eye movements it saved.
+- **Help in five blinks:** an SOS texts the first caregiver. If nobody replies "OK" within 45 seconds it moves to the next person, then the next. When someone answers, the patient's screen says help is on the way.
+- **Family can be there from anywhere:** a caregiver dashboard shows their words appearing letter by letter, a live eye trace drawn the way the electrodes see it, heart rate, the conversation and every step the AI took.
 
 ## How we built it
-- **SpacetimeDB is the backend.** A single TypeScript module holds all state and rules: 11 tables, 21 reducers and a scheduled escalation reducer. That covers heart-rate alert logic, phrase learning, conversation routing, pruning and acknowledgement. The Python speller calls reducers over HTTP, while the hub and the React dashboard use live WebSocket subscriptions. It runs locally for an offline home setup or on Maincloud for remote family.
-- **Photon 2.0** bridges iMessage: inbound texts become rows, queued outbound rows are delivered in the same chat, and SOS alerts go out tier by tier. Replying "OK" acknowledges an alert.
-- **Nemotron** is used as a keyboard accelerator, not a chatbot. It runs as a tool-calling agent: `get_conversation`, `get_patient_state`, `list_contacts`, `alert_caregivers`, then `propose_replies` or `propose_messages` (messages addressed to people). Each step is logged to SpacetimeDB and shown on the dashboard. It runs on build.nvidia.com, or fully offline on `nemotron-3-nano` through Ollama. It falls back to JSON mode, then to built-in replies, so the patient is never left with nothing to say.
-- **Hardware:** a TI AFE4950EVM reads the EOG and PPG signals. A per-user scikit-learn model trains on the SK-AM62B in under 2 seconds and runs in about 90 ms per eye movement.
+- **Hardware:** a TI AFE4950EVM reads the eye signal (EOG) and a fingertip heart-rate sensor. A per-person scikit-learn model on a TI SK-AM62B classifies each movement in about 90 ms, fully offline, and calibrates for a new person in about a minute.
+- **SpacetimeDB is the entire backend:** one TypeScript module with 11 tables and ~23 reducers holds every rule: heart-rate alerts, phrase learning, message routing, and SOS escalation as a *scheduled reducer*, so it still escalates if every screen crashes. The patient screen and dashboard are pure live subscriptions with no API layer.
+- **Photon 2.0:** a Node hub polls the patient's iMessage line, turns incoming texts and photos into database rows, and delivers replies and SOS alerts from the same number. Replying "OK" acknowledges an alert.
+- **NVIDIA Nemotron:** a tool-calling agent (`get_conversation`, `get_patient_state`, `list_contacts`, `alert_caregivers`, `propose_replies`, `propose_messages`) plus Nemotron's vision model for photos. It can run on build.nvidia.com or fully offline through Ollama.
+- **Front end:** React + Vite for the patient screen and the dashboard; Literata for anything the patient says, Atkinson Hyperlegible (designed for low vision) for the interface.
+- **Testing:** unit tests for the backend, agent, Photon bridge and speller, an end-to-end script against a live SpacetimeDB server, and browser tests that drive both screens at once.
 
-## Challenges
-- Making replies short enough to be worth a glance, yet distinct enough to be useful.
-- Escalation that survives a crashed client. Timers live in the database as a scheduled table, not in a browser tab.
-- Shared iMessage lines can only reply to people who texted first, so the hub remembers each caregiver's chat and warns about anyone who hasn't said hi yet.
+## Challenges we ran into
+- **Making blinks a reliable language.** Natural blinks happen constantly, so single blinks are ignored, the gestures are spaced (2, 3, 5), and four is unused so on/off and SOS can never be confused.
+- **AI that helps without speaking for someone.** Nemotron only drafts; the patient always chooses. Getting replies short enough to be worth a glance but different enough to be useful took a lot of prompt and tool design.
+- **iMessage rules.** A shared Photon line can only reply to people who texted it first, so the hub remembers each caregiver's conversation and warns when someone hasn't said hi yet.
+- **Escalation that can't silently fail.** The SOS timer lives in the database as a scheduled reducer instead of in a browser tab.
+- **Endless scrolling with eyes.** The choice ribbon wraps forever without jumping, so the patient never loses their place.
 
-## Accomplishments
-A full loop from eye to iMessage to caregiver and back, 57 automated checks (unit tests plus an end-to-end run against a live SpacetimeDB server), and a dashboard a parent could understand at 3am without instructions.
+## Accomplishments that we're proud of
+- A full loop from an eye movement to a real iMessage on a family member's phone and back.
+- Five blinks reliably reach a real phone, with escalation and a "help is on the way" confirmation for the patient.
+- Measuring the AI instead of hand-waving: every AI-drafted message is compared with what spelling it would have cost.
+- A patient screen designed for the bedside at night, not a generic dashboard.
+- 57 automated checks, including an end-to-end run against a live SpacetimeDB server.
 
 ## What we learned
-When the database is the backend, the clients get simple: the speller talks to it through a 140-line HTTP client, and the dashboard has no API layer at all.
+- When the database *is* the backend, the clients get simple: the screens are just subscriptions, and the speller talks to the backend through a short HTTP client.
+- For assistive tech, the AI's job is to save effort, not to talk. Every design decision got better once that was the rule.
+- Accessibility is in the details: one thing in focus, big type, no blue light at night, and gestures that can't be triggered by accident.
 
-## What's next
-Voice calls on Photon's voice line, so the agent can speak the patient's replies on a real phone call. Also more users and repeat sessions for the eye model, and a clinician pilot.
+## What's next for BlinkTalk
+- Testing with more people and clinicians, including people living with ALS.
+- Voice calls on Photon's voice line, with the patient's replies spoken on a real phone call.
+- A personal synthesized voice, and long-term tracking of gesture accuracy to help care teams notice changes over time.
 
 ## Built with
-spacetimedb, typescript, photon, nvidia-nemotron, ollama, react, vite, python, tkinter, scikit-learn, texas-instruments, am62, afe4950
+spacetimedb, typescript, node.js, react, vite, photon, imessage, nvidia-nemotron, nvidia-nim, ollama, python, tkinter, scikit-learn, numpy, scipy, texas-instruments, am62, afe4950, websockets, vitest, playwright, html5, css3
+
+(Add `gemini`, `vultr`, `tiger-data` and so on only if you actually ship those integrations.)
