@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-process.env.NVIDIA_API_KEY = 'nvapi-test-not-real';
+process.env.NVIDIA_API_KEY = 'test-key-not-real';
 import type { AgentPorts } from '../src/agent.ts';
 const { runAgent, screen, parseRepliesFromText } = await import('../src/agent.ts');
 

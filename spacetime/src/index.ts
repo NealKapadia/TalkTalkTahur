@@ -14,8 +14,7 @@
  * Column and table names are snake_case so SQL from the speller and the
  * generated client bindings agree.
  */
-import { schema, t, table, SenderError, type ReducerCtx, type InferSchema } from 'spacetimedb/server';
-import { ScheduleAt, TimeDuration, Timestamp } from 'spacetimedb';
+import { schema, t, table, SenderError, ScheduleAt, type ReducerCtx, type InferSchema } from 'spacetimedb/server';
 
 // ------------------------------------------------------------------ limits
 const KEEP_EYE_EVENTS = 120;
@@ -551,5 +550,3 @@ export const clear_demo = spacetimedb.reducer({ patient: t.string() }, (ctx, { p
   if (p) ctx.db.patient.handle.update({ ...p, status: 'idle', draft: '', last_spoken: '', heart_out_of_range: 0 });
 });
 
-// Silence "declared but never read" for imports kept for clarity.
-void TimeDuration; void Timestamp;
