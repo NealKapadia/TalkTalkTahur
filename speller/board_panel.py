@@ -137,7 +137,7 @@ class BoardPanel:
     # ------------------------------------------------------------ controls
     def _first_contact(self):
         if self.seen_live:
-            self.status.config(text="board: BlinkTalk already running")
+            self.status.config(text="board: already running (click Stop to pick a user)")
         else:
             self.refresh_users()
 
@@ -171,6 +171,7 @@ class BoardPanel:
         self.link.stop()
         self.running_user = None
         self.status.config(text="board: stopped")
+        self.app.root.after(1500, self.refresh_users)   # repopulate the user list
         self.app.root.focus_set()
 
     def _sens_changed(self, _value):
