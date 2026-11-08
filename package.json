@@ -1,0 +1,12 @@
+{
+  "name": "talktalktahur",
+  "private": true,
+  "description": "BlinkTalk: eye-movement communication with a SpacetimeDB backend, Photon iMessage and a Nemotron agent",
+  "workspaces": ["spacetime", "hub", "dashboard"],
+  "scripts": {
+    "test": "npm test -w spacetime && npm test -w hub",
+    "hub": "npm start -w hub",
+    "dashboard": "npm run dev -w dashboard",
+    "check-secrets": "node scripts/check-secrets.mjs"
+  }
+}
