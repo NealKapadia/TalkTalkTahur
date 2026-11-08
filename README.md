@@ -97,9 +97,14 @@ In `.env`: `NEMOTRON_BASE_URL=http://localhost:11434/v1` and `NEMOTRON_MODEL=nem
 
 `deploy/Dockerfile` runs the hub and serves the dashboard + patient screen on port 8080, against SpacetimeDB on Maincloud. Family and judges get a public link, and the laptop only has to run the board bridge.
 
-1. Publish the module to Maincloud (below).
-2. On Maritime, create a machine from a Dockerfile (repo root, `deploy/Dockerfile`, build arg `SPACETIME_DB=blinktalk-neal`) and add the secrets `NVIDIA_API_KEY`, `PHOTON_API_KEY` and `PHOTON_PROJECT_ID`. Expose port 8080.
-3. Open `https://<machine-url>/` (caregivers) and `https://<machine-url>/?view=patient`. Run the board bridge on the laptop with `--spacetime https://maincloud.spacetimedb.com --db blinktalk-neal`.
+```powershell
+pip install maritime
+cd spacetime ; spacetime publish --server maincloud -y blinktalk-neal ; cd ..   # once
+python scripts/maritime_deploy.py up       # deploys the current commit, prints the public links
+python scripts/maritime_deploy.py status   # links + recent logs
+python scripts/maritime_deploy.py down     # stop it
+```
+It reads `MARITIME_API_KEY` and the other keys from `.env`; only committed files are uploaded (never `.env`). Run the board bridge on the laptop with `--spacetime https://maincloud.spacetimedb.com --db blinktalk-neal`. Any other container host can use `deploy/Dockerfile` instead.
 
 Run only one hub at a time (laptop *or* cloud), so each text is answered once.
 
