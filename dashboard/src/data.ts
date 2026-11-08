@@ -9,7 +9,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   DbConnection, tables,
-  type AgentStep, type Alert, type Contact, type EyeEvent, type HeartSample, type Message, type Patient, type Suggestion,
+  type AgentStep, type Alert, type Contact, type EyeEvent, type HeartSample, type Message, type Patient, type Phrase, type Suggestion,
 } from '@bindings';
 
 export interface Snapshot {
@@ -21,9 +21,16 @@ export interface Snapshot {
   eyes: EyeEvent[];
   heart: HeartSample[];
   agent: AgentStep[];
+  phrases: Phrase[];
 }
 
 export interface Actions {
+  eye(command: 'left' | 'right' | 'select' | 'sos'): void;
+  setDraft(text: string): void;
+  speak(text: string): void;
+  replyLatest(text: string): void;
+  requestIntent(keywords: string): void;
+  cancelSos(): void;
   ackAlert(id: bigint, by: string): void;
   addContact(name: string, address: string, relation: string, tier: number): void;
   removeContact(id: bigint): void;
@@ -39,8 +46,9 @@ export const PATIENT = params.get('patient') ?? 'neal';
 const URI = params.get('uri') ?? (import.meta.env.VITE_SPACETIME_URI as string | undefined) ?? 'ws://localhost:3000';
 const DB = params.get('db') ?? (import.meta.env.VITE_SPACETIME_DB as string | undefined) ?? 'blinktalk';
 export const DEMO = params.has('demo');
+export const PATIENT_VIEW = params.get('view') === 'patient' || location.pathname.endsWith('/patient');
 
-const empty: Snapshot = { contacts: [], messages: [], suggestions: [], alerts: [], eyes: [], heart: [], agent: [] };
+const empty: Snapshot = { contacts: [], messages: [], suggestions: [], alerts: [], eyes: [], heart: [], agent: [], phrases: [] };
 const byId = <T extends { id: bigint }>(a: T, b: T) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
 function snapshot(conn: DbConnection): Snapshot {
@@ -54,6 +62,7 @@ function snapshot(conn: DbConnection): Snapshot {
     eyes: mine(conn.db.eye_event.iter()).sort(byId),
     heart: mine(conn.db.heart_sample.iter()).sort(byId),
     agent: mine(conn.db.agent_step.iter()).sort(byId),
+    phrases: mine(conn.db.phrase.iter()).sort((a, b) => b.uses - a.uses),
   };
 }
 
@@ -87,10 +96,10 @@ export function useBlinkTalk(): { snap: Snapshot; link: Link; actions: Actions; 
           .onApplied(refresh)
           .subscribe([
             tables.patient, tables.contact, tables.message, tables.suggestion, tables.alert,
-            tables.eye_event, tables.heart_sample, tables.agent_step,
+            tables.eye_event, tables.heart_sample, tables.agent_step, tables.phrase,
           ]);
         const t = c.db;
-        for (const tbl of [t.patient, t.contact, t.message, t.suggestion, t.alert, t.eye_event, t.heart_sample, t.agent_step] as const) {
+        for (const tbl of [t.patient, t.contact, t.message, t.suggestion, t.alert, t.eye_event, t.heart_sample, t.agent_step, t.phrase] as const) {
           (tbl as any).onInsert(refresh);
           (tbl as any).onDelete(refresh);
           (tbl as any).onUpdate?.(refresh);
@@ -109,6 +118,12 @@ export function useBlinkTalk(): { snap: Snapshot; link: Link; actions: Actions; 
 
   const r = () => connRef.current?.reducers;
   const actions: Actions = DEMO && demoRef.current ? demoRef.current.actions : {
+    eye: command => r()?.eyeCommand({ patient: PATIENT, command }),
+    setDraft: draft => r()?.setDraft({ patient: PATIENT, draft }),
+    speak: text => r()?.speak({ patient: PATIENT, text }),
+    replyLatest: body => r()?.replyLatest({ patient: PATIENT, body }),
+    requestIntent: keywords => r()?.requestIntent({ patient: PATIENT, keywords }),
+    cancelSos: () => r()?.cancelSos({ patient: PATIENT }),
     ackAlert: (id, by) => r()?.ackAlert({ id, by }),
     addContact: (name, address, relation, tier) => r()?.addContact({ patient: PATIENT, name, address, relation, tier }),
     removeContact: id => r()?.removeContact({ id }),
@@ -136,7 +151,7 @@ function startDemo(set: (s: Snapshot) => void) {
     { id: 2n, patient: 'neal', name: 'Adrian', address: '+19725550142', relation: 'brother', tier: 2 },
     { id: 3n, patient: 'neal', name: 'Night nurse', address: 'nurse@example.org', relation: 'care team', tier: 3 },
   ];
-  const push = () => set({ ...s, patient: s.patient && { ...s.patient }, contacts: [...s.contacts], messages: [...s.messages], suggestions: [...s.suggestions], alerts: [...s.alerts], eyes: [...s.eyes], heart: [...s.heart], agent: [...s.agent] });
+  const push = () => set({ ...s, patient: s.patient && { ...s.patient }, contacts: [...s.contacts], messages: [...s.messages], suggestions: [...s.suggestions], alerts: [...s.alerts], eyes: [...s.eyes], heart: [...s.heart], agent: [...s.agent], phrases: [...s.phrases] });
   for (let i = 0; i < 60; i++) s.heart.push({ id: nid(), patient: 'neal', bpm: 70 + Math.round(4 * Math.sin(i / 5) + Math.random() * 3), quality: 0.8, at: now() });
   const msg = (contact_id: bigint, direction: string, body: string, extra: Partial<Message> = {}) =>
     s.messages.push({ id: nid(), patient: 'neal', contact_id, direction, channel: contact_id ? 'imessage' : 'speech', body, status: direction === 'in' ? 'received' : 'sent', created_at: now(), ...extra });
@@ -150,7 +165,7 @@ function startDemo(set: (s: Snapshot) => void) {
   step('reply', '[a1f3] Yes, I am awake. | Very tired today. | Can you come by? | Call me later.');
 
   const timers: number[] = [];
-  const at = (ms: number, fn: () => void) => timers.push(window.setTimeout(() => { fn(); push(); }, ms));
+  const at = (ms: number, fn: () => void) => { if (!PATIENT_VIEW) timers.push(window.setTimeout(() => { fn(); push(); }, ms)); };
   const eye = (command: string) => { s.eyes.push({ id: nid(), patient: 'neal', command, at: now() }); s.eyes = s.eyes.slice(-40); };
   const typeOut = (start: number, text: string) => {
     [...text].forEach((_, i) => at(start + i * 420, () => {
@@ -159,7 +174,14 @@ function startDemo(set: (s: Snapshot) => void) {
     }));
     return start + text.length * 420;
   };
-  let t = typeOut(800, "I'd like some water");
+  s.phrases = ["I'd like some water, please.", 'Thank you.', 'Please call the nurse.']
+    .map((text, i) => ({ id: nid(), patient: 'neal', text, uses: 5 - i, last_used: now() }));
+  if (PATIENT_VIEW) {
+    s.suggestions = ['Yes, I am awake.', 'Very tired today.', 'Can you come by?', 'Call me later.']
+      .map((text, rank) => ({ id: nid(), patient: 'neal', message_id: 0n, contact_id: 1n, text, rank, source: 'nemotron', created_at: now() }));
+    s.messages = s.messages.filter(m => m.direction === 'in');
+  }
+  const t = PATIENT_VIEW ? 0 : typeOut(800, "I'd like some water");
   at(t + 600, () => { s.patient!.last_spoken = "I'd like some water, please."; s.patient!.draft = ''; s.patient!.status = 'speaking'; msg(0n, 'out', "I'd like some water, please.", { status: 'spoken' }); eye('select'); });
   at(t + 3000, () => {
     msg(2n, 'in', 'Hey bro, want me to bring dinner after my shift? Pho or tacos?');
@@ -183,7 +205,29 @@ function startDemo(set: (s: Snapshot) => void) {
   }, 1000);
   push();
 
+  const latestIn = () => [...s.messages].reverse().find(m => m.direction === 'in');
   const actions: Actions = {
+    eye: command => {
+      eye(command);
+      if (command === 'sos' && s.patient!.status !== 'sos') {
+        s.patient!.status = 'sos';
+        s.alerts.push({ id: nid(), patient: 'neal', kind: 'sos', detail: 'Triple blink on the speller', level: 1, notified_level: 1, acked_by: '', created_at: now(), acked_at: undefined });
+        timers.push(window.setTimeout(() => { const a = s.alerts.find(x => x.kind === 'sos' && !x.acked_by); if (a && PATIENT_VIEW) { a.acked_by = 'Mom'; a.acked_at = now(); s.patient!.status = 'idle'; push(); } }, 6000));
+      }
+      push();
+    },
+    setDraft: draft => { s.patient!.draft = draft; push(); },
+    speak: text => { msg(0n, 'out', text, { status: 'spoken' }); s.patient!.last_spoken = text; push(); },
+    replyLatest: body => { const m = latestIn(); if (m) msg(m.contact_id, 'out', body); s.suggestions = []; push(); },
+    requestIntent: keywords => {
+      timers.push(window.setTimeout(() => {
+        const k = keywords.trim();
+        s.suggestions = [`I'd like some ${k}, please.`, `Could I have ${k} later?`, `No ${k} for now, thanks.`, `Is there any ${k}?`]
+          .map((text, rank) => ({ id: nid(), patient: 'neal', message_id: 0n, contact_id: 1n, text, rank, source: 'nemotron', created_at: now() }));
+        push();
+      }, 1200));
+    },
+    cancelSos: () => { for (const a of s.alerts) if (a.kind === 'sos' && !a.acked_by) { a.acked_by = 'patient (cancelled)'; a.acked_at = now(); } s.patient!.status = 'idle'; push(); },
     ackAlert: (aid, by) => { const a = s.alerts.find(x => x.id === aid); if (a) { a.acked_by = by; a.acked_at = now(); } if (s.patient!.status === 'sos') s.patient!.status = 'idle'; push(); },
     addContact: (name, address, relation, tier) => { s.contacts.push({ id: nid(), patient: 'neal', name, address, relation, tier }); push(); },
     removeContact: cid => { s.contacts = s.contacts.filter(c => c.id !== cid); push(); },

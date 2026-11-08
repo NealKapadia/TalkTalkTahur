@@ -26,6 +26,10 @@ what you spelled. Caregivers see the live draft, eye activity, heart rate and SO
 on the dashboard, and their acknowledgement shows up here.
     python speller.py                      (SpacetimeDB at http://localhost:3000, db blinktalk)
     python speller.py --offline            (no backend)
+    python speller.py --serial COM12 --bridge
+        Board bridge only: forwards eye movements and heart rate to SpacetimeDB and
+        keeps the board controls (calibration); the patient uses the full-screen
+        browser view at http://localhost:5173/?view=patient
 
 Replay a recorded eye signal through the old rule-based detector (baseline):
     python speller.py --csv recording.csv --fs 250 --col 1
@@ -317,9 +321,10 @@ VIOLET, GREEN = "#9B8CFF", "#5CC28A"
 
 
 class App:
-    def __init__(self, root, scan_ms=1200, cloud=None):
+    def __init__(self, root, scan_ms=1200, cloud=None, bridge=False):
         self.root = root
         self.cloud = cloud
+        self.bridge = bridge and cloud is not None
         self.sp = Speller(on_spoken=cloud.spoken if cloud else None,
                           on_reply=cloud.reply if cloud else None,
                           on_expand=cloud.expand if cloud else None)
@@ -384,6 +389,9 @@ class App:
         self.event_lbl.config(text=f"last input: {name}")
         if self.cloud and name in ("left", "right", "select", "sos"):
             self.cloud.eye(name)
+        if self.bridge:                 # the browser patient screen acts on it
+            self.event_lbl.config(text=f"forwarded: {name}")
+            return
         if name == "auto":
             self.auto = not self.auto
             if self.auto:
@@ -450,6 +458,10 @@ class App:
 
     # --- drawing
     def render(self):
+        if self.bridge:
+            self.mode_lbl.config(text="Board bridge: eye movements and heart rate go to SpacetimeDB")
+            self.text_lbl.config(text="Patient screen: localhost:5173/?view=patient")
+            return
         sp = self.sp
         mode = {"main": "Choose a group, suggestion or action",
                 "group": f"Pick a letter from {sp.group}",
@@ -545,17 +557,22 @@ def main():
     p.add_argument("--db", default=os.environ.get("SPACETIME_DB", "blinktalk"), help="SpacetimeDB database name")
     p.add_argument("--patient", default=os.environ.get("BLINKTALK_PATIENT", "neal"))
     p.add_argument("--offline", action="store_true", help="run without the SpacetimeDB backend")
+    p.add_argument("--bridge", action="store_true",
+                   help="only forward board input to SpacetimeDB; the patient uses the browser screen")
     args = p.parse_args()
 
     cloud = None
     if not args.offline:
         from cloud import Cloud
         cloud = Cloud(args.spacetime, args.db, args.patient)
-        cloud.start_polling()
+        if not args.bridge:
+            cloud.start_polling()
+    elif args.bridge:
+        raise SystemExit("--bridge needs the SpacetimeDB backend (drop --offline)")
 
     root = tk.Tk()
-    app = App(root, args.scan_ms, cloud)
-    if cloud:
+    app = App(root, args.scan_ms, cloud, bridge=args.bridge)
+    if cloud and not args.bridge:
         root.after(200, app.pump_cloud)
 
     if args.csv or args.demo:

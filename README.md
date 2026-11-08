@@ -1,6 +1,6 @@
-# BlinkTalk
+# Blink Blink Blink Tahur
 
-**Talk, text and call for help with your eyes.**
+**BlinkTalk: talk, text and call for help with your eyes.** Three blinks and help is on the way.
 
 People with ALS, locked-in syndrome or a severe stroke often understand everything and can say nothing. BlinkTalk reads eye movements from three electrodes on the forehead and turns glances and blinks into speech, iMessages and SOS alerts. Family can see what their person is saying, live, from anywhere.
 
@@ -11,11 +11,11 @@ Team: Neal Kapadia, Adrian Miciano, Alexander Montesino
  electrodes ─► TI AFE4950EVM ─► SK-AM62B (on-device ML: blink / left / right)
                                    │ serial
                                    ▼
-                       Speller (laptop, eyes only) ──HTTP──┐
-                                                           ▼
-      iMessage ◄─► Photon ◄─► Hub ◄──WebSocket──► SpacetimeDB module ◄──WebSocket──► Caregiver dashboard
-                               │                   (all state + rules)
-                               └─► Nemotron agent (NVIDIA API or local Ollama)
+                     Python bridge (laptop) ──HTTP──┐
+                                                    ▼
+ iMessage ◄─► Photon ◄─► Hub ◄──WebSocket──► SpacetimeDB module ◄──WebSocket──► Patient screen (browser)
+                          │                  (all state + rules)  ◄──WebSocket──► Caregiver dashboard
+                          └─► Nemotron agent (NVIDIA API or local Ollama)
 ```
 
 ## What it does
@@ -64,15 +64,19 @@ npm run photon-check          # optional: confirms the Photon key and line
 # 6. Hub: Photon bridge + Nemotron agent (terminal 2)
 npm run hub
 
-# 7. Caregiver dashboard (terminal 3) -> http://localhost:5173
+# 7. Screens (terminal 3)
 npm run dashboard
+#    Patient screen (full screen it, F11):  http://localhost:5173/?view=patient
+#    Caregiver dashboard:                   http://localhost:5173
+#    Keyboard stands in for the eyes on the patient screen: arrows / Space / S
 
-# 8. Speller (terminal 4). Keyboard stands in for the eyes: arrows / Space / S
+# 8. With the SK-AM62B board: the Python bridge forwards eye movements + heart rate (terminal 4)
 pip install pyserial
-python speller/speller.py                 # add --serial COM12 with the SK-AM62B board
+python speller/speller.py --serial COM12 --bridge
+#    (without --bridge, the older Tk speller runs as its own patient screen)
 ```
 
-`http://localhost:5173/?demo` plays a scripted run with no backend.
+No backend handy? `http://localhost:5173/?demo` (caregiver) and `http://localhost:5173/?view=patient&demo` (patient) run on built-in sample data.
 
 ### Photon setup (app.beta.photon.codes)
 
@@ -89,6 +93,16 @@ ollama pull nemotron-3-nano        # 30B MoE, ~24 GB. Smaller machine: nemotron-
 ```
 In `.env`: `NEMOTRON_BASE_URL=http://localhost:11434/v1` and `NEMOTRON_MODEL=nemotron-3-nano`. No key is needed. With local SpacetimeDB and the on-board eye model, nothing but the messaging leaves the house.
 
+### Always-on cloud box (Maritime or any container host)
+
+`deploy/Dockerfile` runs the hub and serves the dashboard + patient screen on port 8080, against SpacetimeDB on Maincloud. Family and judges get a public link, and the laptop only has to run the board bridge.
+
+1. Publish the module to Maincloud (below).
+2. On Maritime, create a machine from a Dockerfile (repo root, `deploy/Dockerfile`, build arg `SPACETIME_DB=blinktalk-neal`) and add the secrets `NVIDIA_API_KEY`, `PHOTON_API_KEY` and `PHOTON_PROJECT_ID`. Expose port 8080.
+3. Open `https://<machine-url>/` (caregivers) and `https://<machine-url>/?view=patient`. Run the board bridge on the laptop with `--spacetime https://maincloud.spacetimedb.com --db blinktalk-neal`.
+
+Run only one hub at a time (laptop *or* cloud), so each text is answered once.
+
 ### SpacetimeDB on Maincloud (remote caregivers)
 
 ```powershell
@@ -104,6 +118,7 @@ Secrets live only in `.env` (gitignored). `npm run check-secrets` scans tracked 
 ```bash
 npm test -w spacetime        # 6 reducer tests on SpacetimeDB's in-process datastore
 npm test -w hub              # 10 tests: agent tool loop / outage / JSON fallback, Photon polling + replies
+npm test -w dashboard        # 4 patient-screen speller logic tests
 python speller/test_cloud.py # 5 speller <-> SpacetimeDB HTTP tests
 npm run e2e                  # 19 end-to-end checks against a running server (E2E_ESCALATION=1 adds the 45 s escalation)
 ```
@@ -116,7 +131,9 @@ npm run e2e                  # 19 end-to-end checks against a running server (E2
 | `bindings/` | Typed client bindings (same shape as `spacetime generate`) |
 | `hub/` | Photon iMessage bridge + Nemotron agent + caregiver alert texting |
 | `dashboard/` | Caregiver console (React + SpacetimeDB live subscription) |
-| `speller/` | Eyes-only speller (Tk): `cloud.py` talks to SpacetimeDB |
+| `dashboard/src/PatientScreen.tsx` | Patient screen: eyes-only, one choice in focus, night palette |
+| `speller/` | Python board bridge + original Tk speller; `cloud.py` talks to SpacetimeDB |
+| `deploy/` | Container for an always-on hub + public dashboard (Maritime) |
 | `edge/`, `board/` | EOG signal processing, on-board model training, live AFE4950 streaming. See [docs/HARDWARE.md](docs/HARDWARE.md) |
 | `scripts/` | End-to-end test, secret scanner |
 
