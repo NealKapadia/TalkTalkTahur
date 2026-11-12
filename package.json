@@ -1,7 +1,7 @@
 {
-  "name": "talktalktahur",
+  "name": "blinktalk",
   "private": true,
-  "description": "BlinkTalk: eye-movement communication with a SpacetimeDB backend, Photon iMessage and a Nemotron agent",
+  "description": "BlinkTalk: eye-movement communication with a SpacetimeDB backend, Photon iMessage and an AI agent",
   "workspaces": [
     "spacetime",
     "hub",

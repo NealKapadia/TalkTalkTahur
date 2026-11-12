@@ -19,9 +19,8 @@ Live from the SK-AM62B (close PuTTY first; COM12 = the board's console port):
     person at the end). "Recalibrate" redoes the selected person. The board prints lines like "BLINKTALK CMD left",
     "BLINKTALK HR 74 good q=0.86"; the speller acts on them.
 
-HackUTD 2026 (SpacetimeDB + Photon + Nemotron): the speller is a client of the
-BlinkTalk SpacetimeDB module (start it first, see README). Incoming iMessages and
-Nemotron reply suggestions appear at the top; one double blink sends a reply.
+The speller is a client of the BlinkTalk SpacetimeDB module (start it first, see README). Incoming iMessages and
+AI reply suggestions appear at the top; one double blink sends a reply.
 Spell a few keywords and pick "AI expand" for full sentences, or "Text it" to send
 what you spelled. Caregivers see the live draft, eye activity, heart rate and SOS
 on the dashboard, and their acknowledgement shows up here.
