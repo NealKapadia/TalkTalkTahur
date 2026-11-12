@@ -182,7 +182,7 @@ function startDemo(set: (s: Snapshot) => void) {
     .map((text, i) => ({ id: nid(), patient: 'neal', text, uses: 5 - i, last_used: now() }));
   if (PATIENT_VIEW) {
     s.suggestions = ['Yes, I am awake.', 'Very tired today.', 'Can you come by?', 'Call me later.']
-      .map((text, rank) => ({ id: nid(), patient: 'neal', message_id: 0n, contact_id: 1n, text, rank, source: 'nemotron', created_at: now() }));
+      .map((text, rank) => ({ id: nid(), patient: 'neal', message_id: 0n, contact_id: 1n, text, rank, source: 'ai', created_at: now() }));
     s.messages = s.messages.filter(m => m.direction === 'in');
   }
   const t = PATIENT_VIEW ? 0 : typeOut(800, "I'd like some water");
@@ -195,7 +195,7 @@ function startDemo(set: (s: Snapshot) => void) {
     step('tool', '[b7c2] propose_replies(4 options)');
     step('reply', '[b7c2] Pho, please! | Tacos sound great. | Not hungry tonight. | What time are you coming?');
     s.suggestions = ['Pho, please!', 'Tacos sound great.', 'Not hungry tonight.', 'What time are you coming?']
-      .map((text, rank) => ({ id: nid(), patient: 'neal', message_id: 0n, contact_id: 2n, text, rank, source: 'nemotron', created_at: now() }));
+      .map((text, rank) => ({ id: nid(), patient: 'neal', message_id: 0n, contact_id: 2n, text, rank, source: 'ai', created_at: now() }));
   });
   at(t + 6500, () => { eye('select'); eye('select'); msg(2n, 'out', 'Pho, please!', { assisted: true }); s.suggestions = []; s.patient!.last_spoken = 'Pho, please!'; });
   at(t + 9000, () => { eye('sos'); s.patient!.status = 'sos'; s.patient!.heart_bpm = 118; s.alerts.push({ id: nid(), patient: 'neal', kind: 'sos', detail: 'Triple blink on the speller', level: 1, notified_level: 1, acked_by: '', created_at: now(), acked_at: undefined }); });
@@ -230,7 +230,7 @@ function startDemo(set: (s: Snapshot) => void) {
         const who = /alex|bro/i.test(k) ? 2n : 1n;
         const word = k.replace(/\b(alex|mom|bro)\b/gi, '').trim() || k;
         const drafts: Array<[bigint, string]> = [[who, `Can you bring ${word} tonight?`], [who, `${word[0].toUpperCase()}${word.slice(1)} later, please.`], [who === 1n ? 2n : 1n, `Could you pick up ${word}?`], [who, `No ${word} for now, thanks.`]];
-        s.suggestions = drafts.map(([contact_id, text], rank) => ({ id: nid(), patient: 'neal', message_id: 0n, contact_id, text, rank, source: 'nemotron', created_at: now() }));
+        s.suggestions = drafts.map(([contact_id, text], rank) => ({ id: nid(), patient: 'neal', message_id: 0n, contact_id, text, rank, source: 'ai', created_at: now() }));
         push();
       }, 1200));
     },
@@ -238,7 +238,7 @@ function startDemo(set: (s: Snapshot) => void) {
       const b = { id: nid(), patient: 'neal', hours, status: 'pending', text: '', model: '', requested_by: by || 'caregiver', created_at: now() };
       s.briefings.push(b); push();
       timers.push(window.setTimeout(() => {
-        b.status = 'done'; b.model = 'gemini-flash-latest';
+        b.status = 'done'; b.model = 'azure:gpt-chat-latest-2';
         b.text = 'Neal had a mostly calm night. Mom checked in just after 1am and he answered “Yes. Can you come by?” using a suggested reply, then asked aloud for water. Alex offered dinner after his shift and Neal chose pho. One SOS at 2:13am was answered by Mom within a minute. His heart rate stayed steady around 72 bpm; it may be worth asking whether he slept after the SOS.';
         push();
       }, 1600));

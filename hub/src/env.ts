@@ -38,6 +38,12 @@ export const settings = {
   nemotronBaseUrl: env('NEMOTRON_BASE_URL', 'https://integrate.api.nvidia.com/v1').replace(/\/$/, ''),
   nemotronThinking: env('NEMOTRON_THINKING', '0') === '1',
   nemotronTimeoutMs: Number(env('NEMOTRON_TIMEOUT', '90')) * 1000,
+  // Azure AI Foundry (OpenAI v1 API). When AZURE_OPENAI_API_KEY is set it replaces both Nemotron
+  // (reply drafts, photo descriptions) and Gemini (caregiver briefings): one fast model for everything.
+  azureKey: env('AZURE_OPENAI_API_KEY'),
+  azureEndpoint: env('AZURE_OPENAI_ENDPOINT', 'https://zincbatteryresearch.services.ai.azure.com/openai/v1').replace(/\/$/, ''),
+  azureDeployment: env('AZURE_OPENAI_DEPLOYMENT', 'gpt-chat-latest-2'),
+  azureTimeoutMs: Number(env('AZURE_OPENAI_TIMEOUT', '20')) * 1000,
   geminiKey: env('GEMINI_API_KEY'),
   geminiModel: env('GEMINI_MODEL', 'gemini-flash-latest'),
   geminiTimeoutMs: Number(env('GEMINI_TIMEOUT', '40')) * 1000,

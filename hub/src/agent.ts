@@ -1,5 +1,6 @@
 /**
- * BlinkTalk agent, powered by NVIDIA Nemotron.
+ * BlinkTalk agent. Runs on Azure AI Foundry (gpt-chat-latest-2) when AZURE_OPENAI_API_KEY is set,
+ * otherwise on NVIDIA Nemotron; the model calls go through llm.ts.
  *
  * Every glance costs the patient seconds, so the agent turns an incoming text
  * (or 2-3 keywords picked with the eyes) into four complete, first-person
@@ -14,7 +15,8 @@
  * system can run with no internet except the messaging channel.
  */
 import { randomUUID } from 'node:crypto';
-import { settings } from './env.ts';
+import { chatCompletion, provider, type Fetch, type ToolCall } from './llm.ts';
+export type { Fetch } from './llm.ts';
 
 // ------------------------------------------------------------------ ports
 /** What the agent can read and do. Implemented over SpacetimeDB in main.ts, faked in tests. */
@@ -27,7 +29,7 @@ export interface AgentPorts {
   contacts(): Array<{ id: bigint; name: string; relation: string }>;
   alertCaregivers(reason: string): Promise<void>;
   /** Replies; `to[i]` is the contact for replies[i] (omitted = whoever the conversation is with). */
-  propose(replies: string[], source: 'nemotron' | 'fallback', to?: bigint[]): Promise<void>;
+  propose(replies: string[], source: 'ai' | 'fallback', to?: bigint[]): Promise<void>;
   log(step: string, detail: string): Promise<void>;
 }
 
@@ -52,13 +54,11 @@ export function fallbackReplies(task: Task): string[] {
 }
 
 // ------------------------------------------------------------------ Nemotron client
-type ToolCall = { id: string; type: 'function'; function: { name: string; arguments: string } };
 type ChatMsg =
   | { role: 'system' | 'user'; content: string }
   | { role: 'assistant'; content: string | null; tool_calls?: ToolCall[] }
   | { role: 'tool'; tool_call_id: string; content: string };
 
-export type Fetch = typeof fetch;
 
 const TOOLS = [
   {
@@ -158,38 +158,10 @@ export function parseRepliesFromText(s: string): string[] | null {
   return lines.length >= 2 ? lines.slice(0, 4) : null;
 }
 
-const isLocal = () => /\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])/.test(settings.nemotronBaseUrl);
-export const agentConfigured = () => Boolean(settings.nvidiaKey) || isLocal();
+export const agentConfigured = () => provider() !== 'none';
 
 async function chat(fetchFn: Fetch, messages: ChatMsg[], useTools: boolean): Promise<{ content: string | null; tool_calls?: ToolCall[] }> {
-  const body: Record<string, unknown> = {
-    model: settings.nemotronModel,
-    messages,
-    temperature: 0.4,
-    top_p: 0.9,
-    max_tokens: 800,
-  };
-  if (useTools) { body.tools = TOOLS; body.tool_choice = 'auto'; }
-  if (!settings.nemotronThinking && !isLocal()) body.chat_template_kwargs = { enable_thinking: false };
-  const headers: Record<string, string> = { 'Content-Type': 'application/json', Accept: 'application/json' };
-  if (settings.nvidiaKey) headers.Authorization = `Bearer ${settings.nvidiaKey}`;
-  const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), settings.nemotronTimeoutMs);
-  try {
-    const res = await fetchFn(`${settings.nemotronBaseUrl}/chat/completions`, {
-      method: 'POST', headers, body: JSON.stringify(body), signal: ctl.signal,
-    });
-    if (!res.ok) {
-      const txt = (await res.text()).slice(0, 300);
-      throw Object.assign(new Error(`Nemotron HTTP ${res.status}: ${txt}`), { status: res.status });
-    }
-    const data = (await res.json()) as { choices?: Array<{ message: { content: string | null; tool_calls?: ToolCall[] } }> };
-    const msg = data.choices?.[0]?.message;
-    if (!msg) throw new Error('Nemotron returned no choices');
-    return msg;
-  } finally {
-    clearTimeout(timer);
-  }
+  return chatCompletion(fetchFn, { messages, tools: useTools ? TOOLS : undefined, maxTokens: 800, temperature: 0.4 });
 }
 
 function clampReplies(replies: unknown[]): string[] {
@@ -215,13 +187,13 @@ export function resolveContact(to: string, contacts: Array<{ id: bigint; name: s
   return loose?.id;
 }
 
-// ------------------------------------------------------------------ photos (Nemotron vision)
+// ------------------------------------------------------------------ photos (vision model)
 export const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 
 /**
  * Describe a photo someone texted the patient, in one or two plain sentences, so it
  * can be shown on their screen and used as context for replies. Uses the same
- * Nemotron VL model (image as a data URL). Returns null if no model is reachable.
+ * vision model (image as a data URL): Azure deployment, or Nemotron VL. Returns null if no model is reachable.
  */
 export async function describeImage(
   image: { data: Buffer; contentType: string }, senderName: string, caption: string, fetchFn: Fetch = fetch,
@@ -229,22 +201,15 @@ export async function describeImage(
   if (!agentConfigured() || !image.contentType.startsWith('image/') || image.data.length > MAX_IMAGE_BYTES) return null;
   const prompt = `${senderName} texted this photo to someone who cannot move or speak${caption ? `, with the words "${caption}"` : ''}. ` +
     'Describe what matters in it in one or two short, warm, concrete sentences (people, food, places, text in the image). No preamble.';
-  const headers: Record<string, string> = { 'Content-Type': 'application/json', Accept: 'application/json' };
-  if (settings.nvidiaKey) headers.Authorization = `Bearer ${settings.nvidiaKey}`;
-  const body: Record<string, unknown> = {
-    model: settings.visionModel || settings.nemotronModel,
-    messages: [{ role: 'user', content: [
-      { type: 'text', text: prompt },
-      { type: 'image_url', image_url: { url: `data:${image.contentType};base64,${image.data.toString('base64')}` } },
-    ] }],
-    temperature: 0.2, max_tokens: 160,
-  };
-  if (!settings.nemotronThinking && !isLocal()) body.chat_template_kwargs = { enable_thinking: false };
   try {
-    const res = await fetchFn(`${settings.nemotronBaseUrl}/chat/completions`, { method: 'POST', headers, body: JSON.stringify(body) });
-    if (!res.ok) return null;
-    const data = (await res.json()) as { choices?: Array<{ message: { content: string | null } }> };
-    const text = stripThinking(data.choices?.[0]?.message?.content ?? '').replace(/\s+/g, ' ').trim();
+    const msg = await chatCompletion(fetchFn, {
+      vision: true, maxTokens: 160, temperature: 0.2,
+      messages: [{ role: 'user', content: [
+        { type: 'text', text: prompt },
+        { type: 'image_url', image_url: { url: `data:${image.contentType};base64,${image.data.toString('base64')}` } },
+      ] }],
+    });
+    const text = stripThinking(msg.content ?? '').replace(/\s+/g, ' ').trim();
     return text ? text.slice(0, 280) : null;
   } catch {
     return null;
@@ -265,7 +230,7 @@ export async function runAgent(task: Task, ports: AgentPorts, fetchFn: Fetch = f
     ? `Text from ${contact.name}. Plan: read the conversation and ${ports.patientName}'s state, check whether caregivers need to know, draft 4 replies.`
     : `${ports.patientName} picked "${task.keywords}". Plan: read the conversation, expand into 4 full replies.`);
 
-  const finish = async (replies: string[], source: 'nemotron' | 'fallback') => {
+  const finish = async (replies: string[], source: 'ai' | 'fallback') => {
     await ports.propose(replies, source);
     await log('reply', replies.join(' | '));
     return replies;
@@ -275,7 +240,7 @@ export async function runAgent(task: Task, ports: AgentPorts, fetchFn: Fetch = f
     return finish(fallbackReplies(task), 'fallback');
   };
 
-  if (!agentConfigured()) return finishFallback('No Nemotron endpoint configured; using built-in replies.');
+  if (!agentConfigured()) return finishFallback('No AI model configured (AZURE_OPENAI_API_KEY or NVIDIA_API_KEY); using built-in replies.');
 
   const messages: ChatMsg[] = [
     { role: 'system', content: systemPrompt(ports.patientName) },
@@ -294,14 +259,14 @@ export async function runAgent(task: Task, ports: AgentPorts, fetchFn: Fetch = f
         messages.push({ role: 'user', content: `Tools are unavailable. Context: conversation=${JSON.stringify(ports.conversation())} state=${JSON.stringify(ports.patientState())}. Reply ONLY with JSON: {"replies":["","","",""]}` });
         continue;
       }
-      return finishFallback(`Nemotron unavailable (${String(err?.message ?? err).slice(0, 160)}).`);
+      return finishFallback(`AI model unavailable (${String(err?.message ?? err).slice(0, 160)}).`);
     }
 
     const calls = msg.tool_calls ?? [];
     if (!calls.length) {
       const parsed = parseRepliesFromText(msg.content ?? '');
       const replies = parsed ? clampReplies(parsed) : [];
-      if (replies.length >= 2) return finish(replies, 'nemotron');
+      if (replies.length >= 2) return finish(replies, 'ai');
       messages.push({ role: 'assistant', content: msg.content ?? '' });
       messages.push({ role: 'user', content: 'Call propose_replies with exactly 4 replies now.' });
       continue;
@@ -332,7 +297,7 @@ export async function runAgent(task: Task, ports: AgentPorts, fetchFn: Fetch = f
               return resolveContact(String(m?.to ?? ''), people) ?? 0n;
             });
             await log('tool', `propose_messages(${texts.map((t, i) => `${people.find(p => p.id === to[i])?.name ?? 'reply'}: ${t}`).join(' | ').slice(0, 300)})`);
-            await ports.propose(texts, 'nemotron', to);
+            await ports.propose(texts, 'ai', to);
             await log('reply', texts.join(' | '));
             return texts;
           }
@@ -347,7 +312,7 @@ export async function runAgent(task: Task, ports: AgentPorts, fetchFn: Fetch = f
           const replies = clampReplies(Array.isArray(args.replies) ? args.replies : []);
           if (replies.length >= 2) {
             await log('tool', `propose_replies(${replies.length} options)`);
-            return finish(replies, 'nemotron');
+            return finish(replies, 'ai');
           }
           result = { error: 'need 4 non-empty replies' };
           break;

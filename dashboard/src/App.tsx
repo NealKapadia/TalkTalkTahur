@@ -50,7 +50,7 @@ export default function App() {
         </aside>
       </main>
       <footer className="foot">
-        BlinkTalk runs on a SpacetimeDB backend, texts through Photon, and drafts replies with NVIDIA Nemotron.
+        BlinkTalk runs on a SpacetimeDB backend, texts through Photon, and drafts replies with GPT on Azure AI Foundry.
         {link !== 'demo' && <button className="link-btn" onClick={() => confirm('Clear the conversation, alerts and agent log?') && actions.clearDemo()}>Reset demo data</button>}
       </footer>
     </div>
@@ -209,11 +209,11 @@ function Bubble({ m, who, name, now }: { m: Message; who?: Contact; name: string
         return (
           <>
             {text && <p>{text}</p>}
-            {photos.map((d, i) => <p key={i} className="photo"><Icon name="image" /> {d ? `Photo, described by Nemotron: ${d}` : 'Photo'}</p>)}
+            {photos.map((d, i) => <p key={i} className="photo"><Icon name="image" /> {d ? `Photo, described by AI: ${d}` : 'Photo'}</p>)}
           </>
         );
       })()}
-      {m.assisted && <span className="ai-tag">Drafted by Nemotron, sent with one choice</span>}
+      {m.assisted && <span className="ai-tag">Drafted by AI, sent with one choice</span>}
     </li>
   );
 }
@@ -251,7 +251,7 @@ function OnScreen({ snap, name }: { snap: Snapshot; name: string }) {
     <section className="panel onscreen">
       <h3>Replies on {name}'s screen</h3>
       <ul>{snap.suggestions.map(s => <li key={String(s.id)}>{s.text}</li>)}</ul>
-      <p className="hint">{snap.suggestions[0].source === 'nemotron' ? 'Drafted by Nemotron.' : 'Built-in replies (Nemotron unreachable).'} {name} sends one with a double blink.</p>
+      <p className="hint">{snap.suggestions[0].source !== 'fallback' ? 'Drafted by AI.' : 'Built-in replies (AI unreachable).'} {name} sends one with a double blink.</p>
     </section>
   );
 }
@@ -318,7 +318,7 @@ function Saved({ snap }: { snap: Snapshot }) {
   const name = snap.patient?.display_name ?? 'The patient';
   return (
     <p className="saved">
-      {name} sent {assisted.length} {assisted.length === 1 ? 'message' : 'messages'} Nemotron drafted, instead of spelling them:
+      {name} sent {assisted.length} {assisted.length === 1 ? 'message' : 'messages'} the AI drafted, instead of spelling them:
       about <strong>{saved.toLocaleString()} fewer eye movements</strong>, roughly {Math.max(1, Math.round(saved * 1.2 / 60))} {Math.round(saved * 1.2 / 60) === 1 ? 'minute' : 'minutes'} of glancing and blinking.
     </p>
   );
@@ -339,11 +339,11 @@ function CatchUp({ snap, name, actions }: { snap: Snapshot; name: string; action
         <>
           <p className="brief">{latest.text}</p>
           <p className="hint">
-            {latest.model === 'rules' ? 'Plain summary (add a Gemini key for a written briefing).' : `Written by Google Gemini from the last ${latest.hours} hours.`} Asked by {latest.requested_by}.
+            {latest.model === 'rules' ? 'Plain summary (add an Azure AI key for a written briefing).' : `Written by ${latest.model.startsWith('azure:') ? 'GPT on Azure AI Foundry' : latest.model.startsWith('gemini') ? 'Google Gemini' : 'AI'} from the last ${latest.hours} hours.`} Asked by {latest.requested_by}.
           </p>
         </>
       ) : (
-        <p className="muted">{stuck ? 'No answer yet. Check that the hub is running (npm run hub), then try again.' : pending ? 'Gemini is reading the last few hours…' : `Missed something? Get a short handoff note on ${name}’s conversations, alerts and heart rate.`}</p>
+        <p className="muted">{stuck ? 'No answer yet. Check that the hub is running (npm run hub), then try again.' : pending ? 'The AI is reading the last few hours…' : `Missed something? Get a short handoff note on ${name}’s conversations, alerts and heart rate.`}</p>
       )}
       <div className="row">
         <select aria-label="How far back" value={hours} onChange={e => setHours(e.target.value)}>

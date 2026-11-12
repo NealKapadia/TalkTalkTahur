@@ -2,7 +2,7 @@
  * BlinkTalk hub: connects SpacetimeDB to the outside world.
  *   - Photon: inbound iMessages -> receive_message; queued outbound -> delivered -> mark_message
  *   - Alerts: SOS / heart-rate alerts -> texts to caregivers, tier by tier as SpacetimeDB escalates
- *   - Agent: every inbound text or eye-picked intent -> Nemotron run -> suggestions
+ *   - Agent: every inbound text or eye-picked intent -> AI run (Azure or Nemotron) -> suggestions
  */
 import type { Alert, Message, Intent } from '../../bindings/index.ts';
 import { settings, redact } from './env.ts';
@@ -163,8 +163,12 @@ function periodFor(conn: Conn, hours: number): Period {
 // ------------------------------------------------------------------ main
 async function main() {
   console.log(`[hub] patient=${P} spacetime=${settings.spacetimeUri}/${settings.spacetimeDb}`);
-  console.log(`[hub] nemotron ${settings.nemotronBaseUrl} model=${settings.nemotronModel} key=${redact(settings.nvidiaKey)}`);
-  console.log(`[hub] gemini briefings model=${settings.geminiModel} key=${redact(settings.geminiKey)}`);
+  if (settings.azureKey) {
+    console.log(`[hub] AI: Azure AI Foundry ${settings.azureEndpoint} deployment=${settings.azureDeployment} key=${redact(settings.azureKey)} (replies, photos, briefings)`);
+  } else {
+    console.log(`[hub] AI: nemotron ${settings.nemotronBaseUrl} model=${settings.nemotronModel} key=${redact(settings.nvidiaKey)}`);
+    console.log(`[hub] AI: gemini briefings model=${settings.geminiModel} key=${redact(settings.geminiKey)}`);
+  }
   const conn = await connect();
   console.log('[hub] connected to SpacetimeDB');
 

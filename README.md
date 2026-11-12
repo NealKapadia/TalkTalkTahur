@@ -5,6 +5,8 @@
 People with ALS, locked-in syndrome or a severe stroke often understand everything and can say nothing. BlinkTalk reads eye movements from three electrodes on the forehead and turns glances and blinks into speech, iMessages and SOS alerts. Family can see what their person is saying, live, from anywhere.
 
 HackUTD 2026: Zero Day · Tracks: **Spacetime**, **Photon**, **NVIDIA Nemotron**
+
+> **Current setup (after the hackathon):** the hub's AI runs on **Azure AI Foundry** (`gpt-chat-latest-2`, `hub/src/llm.ts`) for reply drafts, photo descriptions and caregiver briefings whenever `AZURE_OPENAI_API_KEY` is set; Nemotron and Gemini remain as fallbacks. The board runs the new C eye-command model (`edge/eog_c/`). Running it on the SK-AM62B step by step: [docs/AM62B_SETUP.md](docs/AM62B_SETUP.md). Check the AI model with `npm run llm-check`.
 Built by Neal Kapadia
 
 ```
@@ -125,7 +127,7 @@ Secrets live only in `.env` (gitignored). `npm run check-secrets` scans tracked 
 
 ```bash
 npm test -w spacetime        # 9 reducer tests on SpacetimeDB's in-process datastore
-npm test -w hub              # 18 tests: agent tool loop, recipient routing, photo description, Gemini briefing, outage / JSON fallback, Photon polling, photos + replies
+npm test -w hub              # 25 tests: Azure provider (tools, photos, briefings, fallbacks), agent tool loop, recipient routing, photo description, Gemini briefing, outage / JSON fallback, Photon polling, photos + replies
 npm test -w dashboard        # 7 patient-screen tests: speller, recipient picker, spelling-cost model
 python edge/test_gestures.py # blink gestures: 2 choose, 3 on/off, 5 SOS (board + live stream)
 python speller/test_cloud.py # 5 speller <-> SpacetimeDB HTTP tests

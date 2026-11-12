@@ -13,7 +13,14 @@ Every result is printed as one line starting with "BLINKTALK", e.g.
 The laptop speller reads these lines from the board's serial console
 (python speller.py --serial COM12), so no network is needed.
 
+Two recognizers:
+  --engine c        the C random forest in eog_c/ (72 features, 94% on held-out recordings;
+                    trained on Neal with red beside the RIGHT eye, black beside the LEFT eye)
+  --engine sklearn  a personal model from calibrate.py / calib_session.py (models/<user>.joblib)
+  --engine auto     (default) c for neal / nealb / default, sklearn for anyone calibrated
+
 Usage on the board:
+  python3 blinktalk_live.py --engine c --led 12                         # live from the EVM
   python3 blinktalk_live.py --model models/neal.joblib                    # live from the EVM
   python3 blinktalk_live.py --model models/neal.joblib --replay data/neal_left.csv   # test without electrodes
 """
@@ -28,6 +35,13 @@ import numpy as np
 
 import features as F
 from heart import HeartMonitor
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "eog_c"))
+import eog_c  # noqa: E402
+
+# C recognizer command names -> the words the laptop speller understands
+C_TO_CMD = {"left": "left", "right": "right", "select": "select", "power": "toggle", "sos": "sos"}
+C_DEFAULT_USERS = ("neal", "nealb", "default")
 
 BUFFER_S = 12.0          # analysis window kept in memory
 SENS_DEFAULT = 5         # 1 (strict) .. 10 (sensitive); 5 = plain classifier decision
@@ -137,7 +151,11 @@ def say(line, log=None):
 
 def main():
     ap = argparse.ArgumentParser(description="BlinkTalk live pipeline")
-    ap.add_argument("--model", required=True, help="personal model from calibrate.py")
+    ap.add_argument("--model", default="models/default.joblib", help="personal model from calibrate.py (sklearn engine)")
+    ap.add_argument("--engine", choices=("auto", "c", "sklearn"), default="auto",
+                    help="c = C random forest in eog_c/, sklearn = personal model, auto = c for neal/nealb/default")
+    ap.add_argument("--swap-lr", action="store_true",
+                    help="C engine: electrodes mirrored (red beside the LEFT eye) - swap left and right")
     ap.add_argument("--replay", help="ECG CSV to replay instead of the live EVM")
     ap.add_argument("--replay-ppg", help="PPG CSV to replay alongside")
     ap.add_argument("--speed", type=float, default=1.0, help="replay speed (0 = as fast as possible)")
@@ -151,14 +169,27 @@ def main():
                          "can also be changed while running by typing: sens 7")
     a = ap.parse_args()
 
-    if not os.path.exists(a.model):
-        say(f"ERROR no model {a.model} - calibrate this user first")
-        return 1
-    bundle = joblib.load(a.model)
-    model = bundle["model"]
     level = max(1.0, min(10.0, a.sensitivity))
-    say(f"READY model={os.path.basename(a.model)} user={bundle.get('user', '?')} "
-        f"classes={','.join(map(str, bundle['classes']))} sensitivity={level:g}")
+    stem = os.path.splitext(os.path.basename(a.model))[0]
+    engine = a.engine
+    if engine == "auto":
+        engine = "c" if eog_c.available() and (stem in C_DEFAULT_USERS or not os.path.exists(a.model)) else "sklearn"
+    rec = model = None
+    if engine == "c":
+        if not eog_c.available():
+            say(f"ERROR no C recognizer library ({eog_c.library_path()})")
+            return 1
+        rec = eog_c.Recognizer(sensitivity=level, swap_lr=a.swap_lr)
+        say(f"READY model=eog_c engine=c user={stem} classes=blink,left,right,none "
+            f"sensitivity={level:g}{' swap_lr=1' if a.swap_lr else ''}")
+    else:
+        if not os.path.exists(a.model):
+            say(f"ERROR no model {a.model} - calibrate this user first")
+            return 1
+        bundle = joblib.load(a.model)
+        model = bundle["model"]
+        say(f"READY model={os.path.basename(a.model)} engine=sklearn user={bundle.get('user', '?')} "
+            f"classes={','.join(map(str, bundle['classes']))} sensitivity={level:g}")
     stdin_ok = True                         # the laptop GUI types "sens N" / "quit" here
 
     if a.replay:
@@ -188,13 +219,25 @@ def main():
             new = src.read(0.05)
             ecg = new.get("ECG")
             if ecg is not None and len(ecg):
-                buf = np.concatenate([buf, ecg * 1e3])[-int(BUFFER_S * fs):]
+                if rec is not None:                            # C engine: sample by sample, in volts
+                    t_proc = time.time()
+                    for name, onset in rec.push(ecg):
+                        t_cmd = onset / fs
+                        cmd = C_TO_CMD.get(name)
+                        if cmd is None:
+                            say(f"INFO {name} t={t_cmd:.2f}", log)     # a single blink: ignored on purpose
+                            continue
+                        delay = ((total + len(ecg)) / fs - t_cmd) * 1e3 + (time.time() - t_proc) * 1e3
+                        latencies.append(delay)
+                        say(f"CMD {cmd} t={t_cmd:.2f} delay_ms={delay:.0f}", log)
+                else:
+                    buf = np.concatenate([buf, ecg * 1e3])[-int(BUFFER_S * fs):]
                 total += len(ecg)
             if new.get("TIA1-3") is not None and len(new["TIA1-3"]):
                 heart.add(new["TIA1-3"])
             now = total / fs                                   # stream time (s)
 
-            if now - last_step >= STEP_S and len(buf) >= 4 * fs:
+            if rec is None and now - last_step >= STEP_S and len(buf) >= 4 * fs:
                 last_step = now
                 t_proc = time.time()
                 y = F.preprocess(buf, fs)
@@ -240,6 +283,8 @@ def main():
                         if cmd and cmd[0] == "sens" and len(cmd) > 1:
                             try:
                                 level = max(1.0, min(10.0, float(cmd[1])))
+                                if rec is not None:
+                                    rec.set_sensitivity(level)
                                 say(f"INFO sensitivity={level:g}")
                             except ValueError:
                                 pass
@@ -249,6 +294,10 @@ def main():
             if a.minutes and time.time() - t_start > a.minutes * 60:
                 break
             if a.replay and src.done():
+                if rec is not None:                            # flush the recognizer's look-ahead
+                    for name, onset in rec.push([float(ecg[-1]) if ecg is not None and len(ecg) else 0.0] * int(1.6 * fs)):
+                        if C_TO_CMD.get(name):
+                            say(f"CMD {C_TO_CMD[name]} t={onset / fs:.2f}", log)
                 for t_cmd, cmd in gestures.tick(1e9):
                     say(f"CMD {cmd} t={t_cmd:.2f}", log)
                 break

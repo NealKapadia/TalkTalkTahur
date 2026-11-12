@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { AgentPorts } from '../src/agent.ts';
 
+process.env.AZURE_OPENAI_API_KEY = '';            // these tests cover the Nemotron path, even if .env has an Azure key
 process.env.NVIDIA_API_KEY = 'test-key-not-real';
 process.env.NEMOTRON_BASE_URL = 'https://integrate.api.nvidia.com/v1';
 const { runAgent, parseRepliesFromText, resolveContact } = await import('../src/agent.ts');
@@ -42,7 +43,7 @@ test('multi-step tool run: reads context, then proposes 4 replies', async () => 
   ]);
   const replies = await runAgent({ kind: 'reply', message: { body: 'Are you awake?' } }, ports, fn);
   assert.deepEqual(replies, ['Yes, I am awake.', 'Very tired today.', 'Can you visit?', 'Call me later.']);
-  assert.equal(calls.proposed[0][1], 'nemotron');
+  assert.equal(calls.proposed[0][1], 'ai');
   assert.equal(bodies.length, 2);
   assert.equal(bodies[0].tools.length, 6, 'tools offered');
   assert.equal(bodies[1].messages.filter((m: any) => m.role === 'tool').length, 2, 'tool results fed back');

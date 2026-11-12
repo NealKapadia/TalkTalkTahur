@@ -1,3 +1,7 @@
+> **Current setup:** the board now runs the C eye-command model in `edge/eog_c/` (92% on held-out recordings) through
+> `blinktalk_live.py --engine c`. Step-by-step instructions: [AM62B_SETUP.md](AM62B_SETUP.md). The sklearn pipeline
+> below is still used for personally calibrated users.
+
 ## Pipeline
 
 ```

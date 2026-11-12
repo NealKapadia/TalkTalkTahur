@@ -13,7 +13,8 @@
     "dashboard": "npm run dev -w dashboard",
     "check-secrets": "node scripts/check-secrets.mjs",
     "e2e": "node --import tsx scripts/e2e.ts",
-    "photon-check": "node --import tsx scripts/photon-check.ts"
+    "photon-check": "node --import tsx scripts/photon-check.ts",
+    "llm-check": "node --import tsx scripts/llm-check.ts"
   },
   "devDependencies": {
     "tsx": "^4.19.0"

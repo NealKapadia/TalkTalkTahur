@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Period } from '../src/briefing.ts';
 
+process.env.AZURE_OPENAI_API_KEY = '';            // these tests cover the Gemini path
 process.env.GEMINI_API_KEY = 'test-gemini-key';
 process.env.GEMINI_MODEL = 'gemini-flash-latest';
 const { writeBriefing, periodToText, rulesBriefing } = await import('../src/briefing.ts');

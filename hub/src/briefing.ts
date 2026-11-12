@@ -1,14 +1,15 @@
 /**
- * Caregiver briefing, written by Google Gemini.
- *
- * Nemotron is the patient's keyboard; Gemini writes for the family. A caregiver
+ * Caregiver briefing, written by the Azure AI Foundry model (AZURE_OPENAI_API_KEY), or by
+ * Google Gemini when only GEMINI_API_KEY is set.
+ * A caregiver
  * taps "Catch me up" and Gemini turns the last N hours (conversation, alerts and
  * how fast they were answered, heart rate, how much the patient communicated)
  * into a short, warm, plain-language handoff note, like a nurse's shift handoff.
  * Only first names and the patient's own words are sent: no phone numbers.
- * With no GEMINI_API_KEY the hub writes a plain rule-based summary instead.
+ * With neither key the hub writes a plain rule-based summary instead.
  */
 import { settings } from './env.ts';
+import { chatCompletion, modelLabel } from './llm.ts';
 
 export interface Period {
   patientName: string;
@@ -50,7 +51,7 @@ Write 3 to 5 sentences in plain, warm, factual English for a family member catch
 Data:
 ${data}`;
 
-/** Plain summary used when Gemini isn't configured or fails. */
+/** Plain summary used when no model is configured or the call fails. */
 export function rulesBriefing(p: Period): string {
   const out = p.messages.filter(m => m.kind !== 'in').length;
   const people = [...new Set(p.messages.filter(m => m.kind === 'in').map(m => m.who))];
@@ -65,6 +66,17 @@ export function rulesBriefing(p: Period): string {
 }
 
 export async function writeBriefing(p: Period, fetchFn: Fetch = fetch): Promise<{ text: string; model: string }> {
+  if (settings.azureKey) {
+    try {
+      const msg = await chatCompletion(fetchFn, { messages: [{ role: 'user', content: PROMPT(periodToText(p)) }], maxTokens: 700 });
+      const text = (msg.content ?? '').trim();
+      if (!text) throw new Error('Azure returned no text');
+      return { text: text.slice(0, 2000), model: modelLabel() };
+    } catch (err) {
+      console.error('[briefing] Azure unavailable, using a plain summary:', String((err as Error).message ?? err).slice(0, 300));
+      return { text: rulesBriefing(p), model: 'rules' };
+    }
+  }
   if (!settings.geminiKey) return { text: rulesBriefing(p), model: 'rules' };
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), settings.geminiTimeoutMs);
